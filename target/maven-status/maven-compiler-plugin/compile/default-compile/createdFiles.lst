@@ -1,0 +1,13 @@
+com\conciliacion\infrastructure\config\DataSeeder.class
+com\conciliacion\domain\model\TipoMovimiento.class
+com\conciliacion\infrastructure\web\ConciliacionController.class
+com\conciliacion\domain\model\MovimientoBancario.class
+com\conciliacion\domain\model\OrigenMovimiento.class
+com\conciliacion\domain\model\Conciliacion.class
+com\conciliacion\infrastructure\persistence\MovimientoContableRepository.class
+com\conciliacion\domain\model\MovimientoContable.class
+com\conciliacion\ConciliacionAppApplication.class
+com\conciliacion\domain\model\EstadoConciliacion.class
+com\conciliacion\infrastructure\persistence\ConciliacionRepository.class
+com\conciliacion\application\ConciliacionService.class
+com\conciliacion\infrastructure\persistence\MovimientoBancarioRepository.class

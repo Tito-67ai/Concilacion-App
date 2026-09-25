@@ -1,0 +1,13 @@
+C:\conciliacion\src\main\java\com\conciliacion\application\ConciliacionService.java
+C:\conciliacion\src\main\java\com\conciliacion\ConciliacionAppApplication.java
+C:\conciliacion\src\main\java\com\conciliacion\domain\model\Conciliacion.java
+C:\conciliacion\src\main\java\com\conciliacion\domain\model\EstadoConciliacion.java
+C:\conciliacion\src\main\java\com\conciliacion\domain\model\MovimientoBancario.java
+C:\conciliacion\src\main\java\com\conciliacion\domain\model\MovimientoContable.java
+C:\conciliacion\src\main\java\com\conciliacion\domain\model\OrigenMovimiento.java
+C:\conciliacion\src\main\java\com\conciliacion\domain\model\TipoMovimiento.java
+C:\conciliacion\src\main\java\com\conciliacion\infrastructure\config\DataSeeder.java
+C:\conciliacion\src\main\java\com\conciliacion\infrastructure\persistence\ConciliacionRepository.java
+C:\conciliacion\src\main\java\com\conciliacion\infrastructure\persistence\MovimientoBancarioRepository.java
+C:\conciliacion\src\main\java\com\conciliacion\infrastructure\persistence\MovimientoContableRepository.java
+C:\conciliacion\src\main\java\com\conciliacion\infrastructure\web\ConciliacionController.java
