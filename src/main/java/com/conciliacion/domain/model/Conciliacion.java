@@ -23,9 +23,24 @@ import java.time.LocalDateTime;
  * lado viene un movimiento, pero esta fila ES la union de los dos lados, asi que el
  * campo no podia tener un valor con significado. Quedaba siempre en OTRO, que es
  * dato falso persistido.
+ *
+ * ── Los dos UNIQUE de abajo ───────────────────────────────────────────────────
+ * Un movimiento no puede estar en dos conciliaciones, del mismo lado que sea. Antes
+ * no habia ninguna restriccion, asi que dos personas 点击ando Conciliar al mismo
+ * tiempo sobre la misma fila polycriaban dos conciliaciones y el historial quedaba
+ * con la misma fila dos veces, sin que nada lo negara.
+ *
+ * El chequeo en el service (esta PENDIENTE) alcanza para el caso normal, pero entre
+ * que se chequea y que se inserta hay una ventana. Estos dos UNIQUE la cierran: la
+ * segunda transaccion rebota con DataIntegrityViolationException, que el
+ * ApiExceptionHandler traduce a 409. Es lo unico que funciona cuando dos sesiones
+ * reales compiten, porque el UNIQUE lo aplica la base y no la aplicacion.
  */
 @Entity
-@Table(name = "conciliacion")
+@Table(name = "conciliacion",
+        uniqueConstraints = {
+                @UniqueConstraint(name = "uk_conc_mov_banco", columnNames = "movimiento_bancario_id"),
+                @UniqueConstraint(name = "uk_conc_mov_contable", columnNames = "movimiento_contable_id")})
 public class Conciliacion {
 
     @Id

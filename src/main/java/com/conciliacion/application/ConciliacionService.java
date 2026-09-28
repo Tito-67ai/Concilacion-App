@@ -64,20 +64,72 @@ public class ConciliacionService {
     }
 
     @Transactional(readOnly = true)
+    public List<MovimientoContable> pendientesContables(FiltroConciliacion filtro) {
+        return contableRepo.buscarPendientesConFiltros(EstadoConciliacion.PENDIENTE,
+                filtro.cuentaContableId(), filtro.circuitoId(), filtro.desde(), filtro.hasta());
+    }
+
+    @Transactional(readOnly = true)
     public OpcionesFiltro opciones() {
         return new OpcionesFiltro(cuentaBancariaRepo.findAllByOrderByNombreAsc(),
                 cuentaContableRepo.findAllByOrderByCodigoAsc(),
                 circuitoRepo.findAllByOrderByNombreAsc());
     }
 
+    /**
+     * Conciliacion manual: la persona elige una fila de cada panel.
+     *
+     * A diferencia del automatico, NO se busca por fecha e importe: justamente para
+     * eso esta la pantalla, para los casos donde los dos lados dicen cosas distintas
+     * (un chequeque con fecha valor distinta, un agrupamiento de cuotas, una
+     * diferencia de redondeo). Si exigiera coincidencia exacta seria el mismo
+     * endpoint que el automatico y la pantalla no serviria de nada.
+     *
+     * Lo que SI se valida es que los dos lados sean del mismo signo. Un credito
+     * conciliado contra un debito no es un caso raro de negocio: es agarrar la fila
+     * del panel equivocado, y dejarlo pasar contamina el historial sin que nadie lo
+     * note hasta el cierre. Se rechaza con 409 y un detalle que lo dice.
+     */
+    @Transactional
+    public ResultadoConciliacion conciliarManualmente(Long idBanco, Long idContable) {
+        MovimientoBancario banco = bancoRepo.findById(idBanco).orElse(null);
+        MovimientoContable contable = contableRepo.findById(idContable).orElse(null);
+        if (banco == null || contable == null) {
+            return ResultadoConciliacion.noExiste();
+        }
+        if (!EstadoConciliacion.PENDIENTE.equals(banco.getEstado())
+                || !EstadoConciliacion.PENDIENTE.equals(contable.getEstado())) {
+            return ResultadoConciliacion.sinPar();
+        }
+        if (!Objects.equals(banco.getEsCredito(), contable.getEsCredito())) {
+            return ResultadoConciliacion.signoIncompatible(
+                    "El movimiento bancario es un " + tipo(banco.getEsCredito())
+                            + " y el contable es un " + tipo(contable.getEsCredito())
+                            + ". No se puede conciliar un credito contra un debito.");
+        }
+
+        banco.setEstado(EstadoConciliacion.CONCILIADO);
+        contable.setEstado(EstadoConciliacion.CONCILIADO);
+        bancoRepo.save(banco);
+        contableRepo.save(contable);
+
+        Conciliacion guardada = conciliacionRepo.save(
+                Conciliacion.registrar(EstadoConciliacion.CONCILIADO, banco, contable));
+        return ResultadoConciliacion.ok(guardada);
+    }
+
+    private static String tipo(Boolean esCredito) {
+        return Boolean.TRUE.equals(esCredito) ? "credito" : "debito";
+    }
+
     @Transactional
     public ResultadoConciliacion autoconciliar(Long idBanco) {
         MovimientoBancario bco = bancoRepo.findById(idBanco).orElse(null);
         if (bco == null) {
-            return new ResultadoConciliacion(ResultadoConciliacion.Estado.NO_EXISTE, null);
+            return ResultadoConciliacion.noExiste();
         }
         if (!EstadoConciliacion.PENDIENTE.equals(bco.getEstado())) {
-            return new ResultadoConciliacion(ResultadoConciliacion.Estado.SIN_PAR, null);
+            return ResultadoConciliacion.sinPar();
         }
 
         List<MovimientoContable> pares = new ArrayList<>();
@@ -92,7 +144,7 @@ public class ConciliacionService {
         // Si hay mas de un candidato no se decide solo: eso es trabajo de la pantalla
         // de matching, no del automatico.
         if (pares.size() != 1) {
-            return new ResultadoConciliacion(ResultadoConciliacion.Estado.SIN_PAR, null);
+            return ResultadoConciliacion.sinPar();
         }
 
         MovimientoContable par = pares.get(0);
@@ -103,7 +155,7 @@ public class ConciliacionService {
                 Conciliacion.registrar(EstadoConciliacion.CONCILIADO, bco, par));
         bancoRepo.save(bco);
         contableRepo.save(par);
-        return new ResultadoConciliacion(ResultadoConciliacion.Estado.OK, guardada);
+        return ResultadoConciliacion.ok(guardada);
     }
 
     /** Descarta un movimiento que no va a tener contrapartida (comision del banco, etc).
@@ -112,10 +164,10 @@ public class ConciliacionService {
     public ResultadoConciliacion descartar(Long idBanco) {
         MovimientoBancario bco = bancoRepo.findById(idBanco).orElse(null);
         if (bco == null) {
-            return new ResultadoConciliacion(ResultadoConciliacion.Estado.NO_EXISTE, null);
+            return ResultadoConciliacion.noExiste();
         }
         if (!EstadoConciliacion.PENDIENTE.equals(bco.getEstado())) {
-            return new ResultadoConciliacion(ResultadoConciliacion.Estado.SIN_PAR, null);
+            return ResultadoConciliacion.sinPar();
         }
         bco.setEstado(EstadoConciliacion.DESCARTADO);
         bancoRepo.save(bco);
