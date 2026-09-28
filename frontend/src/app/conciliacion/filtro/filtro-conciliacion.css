@@ -1,0 +1,9 @@
+/* Ahora Bootstrap hace todo el trabajo: .filtro usa .card, los controles usan
+   .form-select / .form-control, y la grilla es .row/.col-*.
+   Solo queda el label un poco mas chico y gris, para diferenciaarlo del valor. */
+.filtro .form-label {
+  margin-bottom: 0.15rem;
+  font-size: 0.75rem;
+  font-weight: 600;
+  color: #6c757d;
+}

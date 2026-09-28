@@ -1,0 +1,120 @@
+<div class="card border-0 shadow-sm mb-4">
+  <div class="card-header bg-white border-bottom-0 d-flex justify-content-between pt-3 pb-0">
+    <span class="fw-bold text-secondary" style="font-size: 0.9rem">Filtros</span>
+    <span class="text-secondary small">aplicá y se actualiza la tabla</span>
+  </div>
+
+  <div class="card-body">
+    <form (ngSubmit)="aplicarFiltro()">
+      <div class="row g-3">
+        <div class="col-12 col-md-6 col-xl-3">
+          <div class="form-floating">
+            <select
+              id="f-cuenta-bancaria"
+              class="form-select border-secondary-subtle"
+              [ngModel]="draft().cuentaBancariaId"
+              (ngModelChange)="set('cuentaBancariaId', $event)"
+              name="cuentaBancariaId"
+            >
+              <option [ngValue]="null">Todas</option>
+              @for (c of opciones().cuentasBancarias; track c.id) {
+                <option [ngValue]="c.id">{{ c.nombre }} — {{ c.banco }}</option>
+              }
+            </select>
+            <label for="f-cuenta-bancaria">Cuenta bancaria</label>
+          </div>
+        </div>
+
+        @if (mostrarContables()) {
+          <div class="col-12 col-md-6 col-xl-3">
+            <div class="form-floating">
+              <select
+                id="f-cuenta-contable"
+                class="form-select border-secondary-subtle"
+                [ngModel]="draft().cuentaContableId"
+                (ngModelChange)="set('cuentaContableId', $event)"
+                name="cuentaContableId"
+              >
+                <option [ngValue]="null">Todas</option>
+                @for (c of opciones().cuentasContables; track c.id) {
+                  <option [ngValue]="c.id">{{ c.codigo }} — {{ c.nombre }}</option>
+                }
+              </select>
+              <label for="f-cuenta-contable">Cuenta contable</label>
+            </div>
+          </div>
+
+          <div class="col-12 col-md-6 col-xl-3">
+            <div class="form-floating">
+              <select
+                id="f-circuito"
+                class="form-select border-secondary-subtle"
+                [ngModel]="draft().circuitoId"
+                (ngModelChange)="set('circuitoId', $event)"
+                name="circuitoId"
+              >
+                <option [ngValue]="null">Todos</option>
+                @for (c of opciones().circuitos; track c.id) {
+                  <option [ngValue]="c.id">{{ c.nombre }}</option>
+                }
+              </select>
+              <label for="f-circuito">Circuito contable</label>
+            </div>
+          </div>
+        } @else {
+          <div class="col-12 col-md-6 col-xl-3">
+            <!-- En pendientes no hay cuenta contable ni circuito: un pendiente
+                 todavia no tiene contrapartida. El espacio se completa con el
+                 periodo, que si aplica. -->
+          </div>
+        }
+
+        <div class="col-6 col-md-3 col-xl-2">
+          <div class="form-floating">
+            <input
+              id="f-desde"
+              type="date"
+              class="form-control border-secondary-subtle"
+              [ngModel]="draft().desde"
+              (ngModelChange)="setFecha('desde', $event)"
+              name="desde"
+            />
+            <label for="f-desde">Desde</label>
+          </div>
+        </div>
+
+        <div class="col-6 col-md-3 col-xl-2">
+          <div class="form-floating">
+            <input
+              id="f-hasta"
+              type="date"
+              class="form-control border-secondary-subtle"
+              [ngModel]="draft().hasta"
+              (ngModelChange)="setFecha('hasta', $event)"
+              name="hasta"
+            />
+            <label for="f-hasta">Hasta</label>
+          </div>
+        </div>
+      </div>
+
+      <div class="d-flex justify-content-end gap-2 mt-3">
+        <button
+          type="button"
+          class="btn btn-outline-secondary px-4"
+          [disabled]="!hayFiltro() || cargando()"
+          (click)="limpiarFiltro()"
+        >
+          Limpiar
+        </button>
+        <button type="submit" class="btn btn-outline-secondary px-4" [disabled]="cargando()">
+          @if (cargando()) {
+            Aplicando...
+          } @else {
+            Aplicar
+          }
+        </button>
+      </div>
+    </form>
+  </div>
+</div>

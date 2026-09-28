@@ -1,0 +1,23 @@
+<nav class="navbar navbar-expand navbar-dark bg-dark mb-4">
+  <div class="container">
+    <span class="navbar-brand mb-0 h1">Conciliación.app</span>
+    <ul class="navbar-nav ms-auto">
+      <li class="nav-item">
+        <a
+          class="nav-link"
+          routerLink="/pendientes"
+          routerLinkActive="active"
+          [routerLinkActiveOptions]="{ exact: true }"
+          >A conciliar</a
+        >
+      </li>
+      <li class="nav-item">
+        <a class="nav-link" routerLink="/conciliados" routerLinkActive="active">Conciliados</a>
+      </li>
+    </ul>
+  </div>
+</nav>
+
+<main class="container pb-4">
+  <router-outlet />
+</main>

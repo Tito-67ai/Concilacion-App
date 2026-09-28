@@ -1,0 +1,95 @@
+<section>
+  <header class="d-flex justify-content-between align-items-center mb-3">
+    <h2 class="h4 mb-0">Movimientos a conciliar</h2>
+    <button type="button" class="btn btn-outline-secondary btn-sm" (click)="cargar()" [disabled]="cargando()">
+      @if (cargando()) {
+        Cargando...
+      } @else {
+        Refrescar
+      }
+    </button>
+  </header>
+
+  <app-filtro-conciliacion
+    [opciones]="opciones()"
+    [cargando]="cargando()"
+    (aplicar)="aplicarFiltro($event)"
+    (limpiar)="limpiarFiltro()"
+  />
+
+  <div class="mt-3">
+    @if (mensaje(); as m) {
+      <div class="alert alert-{{ m.tipo == 'ok' ? 'success' : m.tipo }}" role="status" aria-live="polite">
+        {{ m.texto }}
+      </div>
+    }
+
+    @if (cargando() && !pendientes().length) {
+      <p class="text-muted mb-0">Cargando movimientos...</p>
+    } @else if (pendientes().length) {
+      <div class="table-responsive">
+        <table class="table table-sm table-hover align-middle mb-0" [attr.aria-busy]="cargando()">
+          <thead class="table-light">
+            <tr>
+              <th scope="col">Fecha</th>
+              <th scope="col">Detalle</th>
+              <th scope="col">Cuenta</th>
+              <th scope="col" class="text-end">Importe</th>
+              <th scope="col">Tipo</th>
+              <th scope="col" class="text-end">Acciones</th>
+            </tr>
+          </thead>
+          <tbody>
+            @for (m of pendientes(); track m.id) {
+              <tr>
+                <td class="text-nowrap">{{ m.fecha | fechaDm }}</td>
+                <td>{{ m.detalle }}</td>
+                <td class="text-nowrap">
+                  <span class="badge text-bg-secondary">{{ m.cuentaBancaria.nombre }}</span>
+                </td>
+                <td
+                  class="text-end text-nowrap fw-semibold"
+                  [class.text-success]="m.esCredito"
+                  [class.text-danger]="!m.esCredito"
+                >
+                  {{ m.esCredito ? '+' : '-' }} {{ m.importe | number: '1.2-2' }}
+                </td>
+                <td class="text-nowrap">{{ m.esCredito ? 'Crédito' : 'Débito' }}</td>
+                <td class="text-end text-nowrap">
+                  <div class="btn-group btn-group-sm">
+                    <button
+                      type="button"
+                      class="btn btn-primary"
+                      (click)="autoconciliar(m.id)"
+                      [disabled]="procesandoId() === m.id"
+                    >
+                      @if (procesandoId() === m.id) {
+                        Procesando...
+                      } @else {
+                        Autoconciliar
+                      }
+                    </button>
+                    <button
+                      type="button"
+                      class="btn btn-outline-secondary"
+                      (click)="descartar(m.id)"
+                      [disabled]="procesandoId() === m.id"
+                      title="Para movimientos sin contrapartida contable: comisiones, traspasos entre cuentas propias, retiros."
+                    >
+                      Descartar
+                    </button>
+                  </div>
+                </td>
+              </tr>
+            }
+          </tbody>
+        </table>
+      </div>
+      <p class="text-muted small mt-2 mb-0">
+        {{ pendientes().length }} movimiento(s) pendiente(s).
+      </p>
+    } @else {
+      <p class="text-muted mb-0">No hay movimientos pendientes para este filtro.</p>
+    }
+  </div>
+</section>

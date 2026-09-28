@@ -1,0 +1,15 @@
+/* Bootstrap ya esta instalado (npm i bootstrap bootstrap-icons) y registrado en
+   angular.json. Este archivo solo tiene lo que Bootstrap NO da.
+
+   OJO CON EL ORDEN: en angular.json, bootstrap.min.css va ANTES que styles.css,
+   asi que lo de aca pisa a Bootstrap. Eso es intencional para el fondo. */
+
+html {
+  color-scheme: light;
+}
+
+/* Bootstrap deja el body en blanco. La app usa fondo gris para que las cards
+   blancas se destaquen. */
+body {
+  background-color: #f3f4f6;
+}
