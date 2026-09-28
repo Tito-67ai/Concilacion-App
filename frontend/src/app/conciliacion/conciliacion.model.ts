@@ -7,7 +7,15 @@
  */
 
 export type EstadoConciliacion = 'PENDIENTE' | 'CONCILIADO' | 'DESCARTADO';
-export type OrigenMovimiento = 'XUBIO' | 'MANUAL' | 'OTRO';
+
+/**
+ * De donde salio la fila. Los dos lados usan el mismo enum.
+ *
+ * Ojo con 'XUBIO_API': antes el valor era 'XUBIO', que no decia si venia de la API
+ * o de una carga manual. Esa distincion es justamente la que hace falta para no pisar
+ * con una sincronizacion lo que el usuario escribio a mano.
+ */
+export type OrigenMovimiento = 'MANUAL' | 'CSV' | 'API_BANCARIA' | 'XUBIO_API' | 'OTRO';
 
 /** Jackson manda LocalDate como "yyyy-MM-dd" (sin hora ni zona). */
 export type IsoDate = string;
@@ -20,6 +28,11 @@ export interface CuentaBancaria {
   nombre: string;
   banco: string;
   cbu: string;
+  /**
+   * Cuando se conecto una fuente por ultima vez. Sirve para no volver a bajar desde
+   * cero. OJO: NO evita duplicados, para eso esta el `comprobante` del movimiento.
+   */
+  ultimaImportacionEn?: IsoDateTime | null;
 }
 
 export interface CuentaContable {
@@ -43,7 +56,13 @@ export interface MovimientoBancario {
   id: number;
   /** Derivado: viene de la cuenta, no es una columna propia. */
   cbu: string;
+  /** Fecha VALOR: la del extracto, y la que usa el filtro de la pantalla. */
   fecha: IsoDate;
+  /**
+   * Fecha de EJECUCION. Puede diferir de `fecha` (pago acreditado el 28 con valor
+   * 30). El backend la manda siempre; queda opcional para no romper filas viejas.
+   */
+  fechaOperacion?: IsoDate | null;
   detalle: string;
   /**
    * Llega como numero JSON, asi que aca es un `number` de JS (double IEEE 754).
@@ -55,6 +74,17 @@ export interface MovimientoBancario {
   estado: EstadoConciliacion;
   importadoEn: IsoDateTime;
   cuentaBancaria: CuentaBancaria;
+  origen: OrigenMovimiento;
+  /**
+   * ID de transaccion del BANCO. Es lo que hace idempotente una reimportacion: la
+   * deduplicacion es por (cuenta, comprobante). Viene null en las altas manuales y
+   * en las fuentes que no lo entregan (un CSV sin esta columna no deduplica).
+   */
+  comprobante?: string | null;
+  /** Saldo de la cuenta despues del movimiento, si la fuente lo da. */
+  saldo?: number | null;
+  /** Corrida de importacion de la que salio esta fila. */
+  importacion?: ImportacionBancaria | null;
 }
 
 export interface MovimientoContable {
@@ -103,3 +133,55 @@ export const FILTRO_VACIO: FiltroConciliacion = {
   desde: null,
   hasta: null,
 };
+
+// ─── Importacion bancaria ───────────────────────────────────────────────────────
+
+/**
+ * Corresponde a `ExtractorBancario.aceptaArchivo()` / `puedeEjecutarseSolo()` en el
+ * backend. Los dos flags juntos dicen que espera la UI: con `aceptaArchivo` hay que
+ * abrir el selector de archivos; con `puedeEjecutarseSolo` alcanza con un boton.
+ *
+ * El `codigo` es texto libre y NO un enum, a proposito: cada banco nuevo agrega un
+ * valor y no obliga a tocar este archivo.
+ */
+export interface InfoExtractor {
+  codigo: string;
+  descripcion: string;
+  origen: OrigenMovimiento;
+  aceptaArchivo: boolean;
+  puedeEjecutarseSolo: boolean;
+}
+
+/**
+ * Una corrida de importacion. Es la traza de por que una fila existe: que se pidio,
+ * de donde, y cuanto entro de verdad.
+ *
+ * `leidos - insertados - duplicados` son las filas que se descartaron por formato
+ * roto, que es lo unico que no queda en otra tabla.
+ */
+export interface ImportacionBancaria {
+  id: number;
+  cuentaBancaria: CuentaBancaria;
+  origen: OrigenMovimiento;
+  extractor: string;
+  desde?: IsoDate | null;
+  hasta?: IsoDate | null;
+  leidos: number;
+  insertados: number;
+  duplicados: number;
+  iniciadaEn: IsoDateTime;
+  terminadaEn?: IsoDateTime | null;
+  detalle?: string | null;
+}
+
+/**
+ * Cuerpo de error del backend. Antes el backend no devolvia nada estructurado: un
+ * fallo llegaba como 500 con el stack trace en el cuerpo, y la UI no tenia forma de
+ * distinguir "no existe" de "choca con un cambio concurrente".
+ */
+export interface ApiError {
+  error: string;
+  detalle: string;
+  /** Solo en EXTRACTOR_DESCONOCIDO: los codigos que si existen. */
+  disponibles?: string[];
+}
