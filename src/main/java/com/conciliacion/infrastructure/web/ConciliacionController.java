@@ -3,10 +3,13 @@ package com.conciliacion.infrastructure.web;
 import com.conciliacion.application.ConciliacionService;
 import com.conciliacion.application.FiltroConciliacion;
 import com.conciliacion.application.OpcionesFiltro;
+import com.conciliacion.application.ParejaConciliacion;
 import com.conciliacion.application.ResultadoConciliacion;
 import com.conciliacion.domain.model.Conciliacion;
 import com.conciliacion.domain.model.EstadoConciliacion;
 import com.conciliacion.domain.model.MovimientoBancario;
+import com.conciliacion.domain.model.MovimientoContable;
+import jakarta.validation.Valid;
 import org.springframework.format.annotation.DateTimeFormat;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
@@ -14,6 +17,7 @@ import org.springframework.web.bind.annotation.*;
 
 import java.time.LocalDate;
 import java.util.List;
+import java.util.Map;
 
 @RestController
 @RequestMapping("/api/conciliaciones")
@@ -57,6 +61,43 @@ public class ConciliacionController {
     }
 
     /**
+     * Panel derecho de la pantalla de matching: los contables que todavia no tienen
+     * pareja. Filtra por cuenta contable, circuito y fechas. NO por cuenta bancaria:
+     * en este lado todavia no hay cuenta bancaria, se conoce cuando se elige la
+     * pareja con la fila del otro panel.
+     */
+    @GetMapping("/pendientes-contables")
+    public List<MovimientoContable> pendientesContables(
+            @RequestParam(required = false) Long cuentaContableId,
+            @RequestParam(required = false) Long circuitoId,
+            @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate desde,
+            @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate hasta) {
+        return service.pendientesContables(
+                new FiltroConciliacion(null, cuentaContableId, circuitoId, desde, hasta, null));
+    }
+
+    /**
+     * Conciliacion manual: POST con el par, no con un id suelto, porque "conciliar
+     * estos dos" es una accion sobre un par.
+     *
+     * 404 si alguno de los dos no existe, 409 si alguno ya no esta pendiente, 409 con
+     * detalle si son de signos distintos.
+     */
+    @PostMapping
+    public ResponseEntity<?> conciliar(@Valid @RequestBody ParejaConciliacion pareja) {
+        ResultadoConciliacion r = service.conciliarManualmente(pareja.idBanco(), pareja.idContable());
+        return switch (r.estado()) {
+            case OK -> ResponseEntity.ok(r.conciliacion());
+            case NO_EXISTE -> ResponseEntity.notFound().build();
+            case SIGNO_INCOMPATIBLE -> ResponseEntity.status(HttpStatus.CONFLICT)
+                    .body(Map.of("error", "SIGNO_INCOMPATIBLE", "detalle", r.detalle()));
+            case SIN_PAR -> ResponseEntity.status(HttpStatus.CONFLICT)
+                    .body(Map.of("error", "SIN_PAR",
+                            "detalle", "Alguno de los dos movimientos ya fue conciliado o descartado."));
+        };
+    }
+
+    /**
      * 404 si el id no existe, 409 si existe pero no se puede conciliar.
      * Antes devolvia `Optional` directo, que Jackson serializa como `null` con 200:
      * el cliente no podia distinguir "no existe" de "no matcheo".
@@ -68,6 +109,7 @@ public class ConciliacionController {
             case OK -> ResponseEntity.ok(r.conciliacion());
             case NO_EXISTE -> ResponseEntity.notFound().build();
             case SIN_PAR -> ResponseEntity.status(HttpStatus.CONFLICT).build();
+            case SIGNO_INCOMPATIBLE -> ResponseEntity.status(HttpStatus.CONFLICT).build();
         };
     }
 
@@ -78,7 +120,10 @@ public class ConciliacionController {
         return switch (r.estado()) {
             case OK -> ResponseEntity.noContent().build();
             case NO_EXISTE -> ResponseEntity.notFound().build();
-            case SIN_PAR -> ResponseEntity.status(HttpStatus.CONFLICT).build();
+            // SIGNO_INCOMPATIBLE no puede salir de descartar: descartar no mira el
+            // otro lado. El case esta porque el switch tiene que ser exhaustivo, y
+            // omitirlo seria cambiar el contrato del enum en silencio.
+            case SIN_PAR, SIGNO_INCOMPATIBLE -> ResponseEntity.status(HttpStatus.CONFLICT).build();
         };
     }
 }
