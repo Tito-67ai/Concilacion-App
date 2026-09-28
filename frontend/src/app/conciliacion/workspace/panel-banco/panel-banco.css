@@ -1,0 +1,4 @@
+/* Las clases compartidas por los dos paneles (.fila-seleccionable, .fila-activa,
+   .sub, .credito, .debito, .tabla-scroll) viven en src/styles.css: los usa el
+   panel izquierdo y el derecho por igual, y duplicarlas en dos css de componente
+   con el encapsulation de Angular es copiar lo mismo dos veces. */

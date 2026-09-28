@@ -1,23 +1,27 @@
-<nav class="navbar navbar-expand navbar-dark bg-dark mb-4">
-  <div class="container">
-    <span class="navbar-brand mb-0 h1">Conciliación.app</span>
-    <ul class="navbar-nav ms-auto">
-      <li class="nav-item">
-        <a
-          class="nav-link"
-          routerLink="/pendientes"
-          routerLinkActive="active"
-          [routerLinkActiveOptions]="{ exact: true }"
-          >A conciliar</a
-        >
-      </li>
-      <li class="nav-item">
-        <a class="nav-link" routerLink="/conciliados" routerLinkActive="active">Conciliados</a>
-      </li>
-    </ul>
-  </div>
-</nav>
+<!--
+  El shell no tiene navbar: la pantalla de conciliacion es de punta a punta, con el
+  titulo arriba a la izquierda y el layout dentro del componente (asi lo pide el
+  mockup). Lo que queda es solo el outlet.
 
-<main class="container pb-4">
+  Las dos pantallas viejas (pendientes y conciliados) viven bajo /pendientes y
+  /conciliados y cada una trae su propio encabezado. Para que sigan leyendose bien
+  sin la navbar que las contenia, el outlet les da el margen y el ancho maximo que
+  tenian antes.
+-->
+<div class="vistas">
   <router-outlet />
-</main>
+</div>
+
+<style>
+  .vistas {
+    max-width: 1100px;
+    margin: 0 auto;
+    padding: 1.5rem 1rem 3rem;
+  }
+
+  /* La pantalla de conciliacion es full-width: le saca el contenedor. */
+  .vistas:has(> app-workspace) {
+    max-width: none;
+    padding: 0;
+  }
+</style>

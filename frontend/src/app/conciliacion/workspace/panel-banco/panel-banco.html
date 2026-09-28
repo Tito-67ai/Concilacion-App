@@ -1,0 +1,132 @@
+<div class="card rounded-0 border-secondary-subtle shadow-none h-100 bg-white panel">
+  <div class="card-body d-flex flex-column">
+    <div class="d-flex justify-content-between align-items-center mb-3 flex-wrap gap-2">
+      <h6 class="fw-bold m-0 text-dark" style="font-size: 0.95rem">Movimientos bancarios</h6>
+      <div class="d-flex gap-2">
+        <span class="badge rounded-pill fw-normal text-muted" style="background-color: #f4f4f4" title="La fuente DEMO: lo que baja el extractor de prueba">Banco</span>
+        <span class="badge rounded-pill fw-normal text-muted" style="background-color: #f4f4f4" title="Subir un Excel/CSV exportado del home banking">Excel</span>
+        <span
+          class="badge rounded-pill fw-normal text-muted"
+          style="background-color: #f4f4f4"
+          title="No hay lector de PDF todavia"
+          >PDF</span
+        >
+      </div>
+    </div>
+
+    <div class="d-flex justify-content-between mb-3 flex-wrap gap-2">
+      <div class="input-group input-group-sm w-50">
+        <input
+          type="text"
+          class="form-control rounded-0 border-secondary-subtle shadow-none border-end-0"
+          placeholder="Buscar"
+          [value]="texto()"
+          (input)="onBuscar($event)"
+        />
+        <span class="input-group-text bg-white rounded-0 border-secondary-subtle border-start-0 text-muted">&#128269;</span>
+      </div>
+      <div class="btn-group">
+        <button
+          type="button"
+          class="btn btn-sm rounded-0 border-secondary-subtle text-dark"
+          style="background-color: #e4e4e4"
+          disabled
+          title="Etiquetar agrupa movimientos bajo una etiqueta. No existe el modelo de etiqueta todavia: habria que decidir si la etiqueta es de la cuenta, del circuito o de la corrida de importacion."
+        >
+          Etiquetar
+        </button>
+        <button
+          type="button"
+          class="btn btn-sm rounded-0 border-secondary-subtle text-dark"
+          style="background-color: #e4e4e4"
+          disabled
+          title="Crear un movimiento bancario a mano. Falta el alta manual: exigiria decidir de donde sale el comprobante para que la reimportacion del banco no la duplique."
+        >
+          Crear &#9662;
+        </button>
+        <button
+          type="button"
+          class="btn btn-sm rounded-0 border-secondary-subtle text-dark"
+          style="background-color: #e4e4e4"
+          disabled
+          title="Eliminar no se puede exponer aca: un movimiento importado se vuelve a bajar del banco, borrarlo a mano deja el historial mintiendo. Para lo que no tiene contrapartida esta Descartar."
+        >
+          Eliminar
+        </button>
+      </div>
+    </div>
+
+    @if (!hayFiltro()) {
+      <div class="text-center text-secondary py-5 mt-4" style="font-size: 0.85rem">
+        Elegí los filtros para visualizar la información
+      </div>
+    } @else if (visibles().length === 0) {
+      <div class="text-center text-secondary py-5 mt-4" style="font-size: 0.85rem">
+        @if (texto()) {
+          Ningún movimiento coincide con “{{ texto() }}”.
+        } @else {
+          No hay movimientos bancarios pendientes para estos filtros.
+        }
+      </div>
+    } @else {
+      <div class="tabla-scroll">
+        <table class="table table-sm mb-0 tabla-conc">
+          <thead>
+            <tr>
+              <th>Fecha</th>
+              <th>Detalle</th>
+              <th class="text-end">Importe</th>
+            </tr>
+          </thead>
+          <tbody>
+            @for (m of visibles(); track m.id) {
+              <tr
+                class="fila-seleccionable"
+                [class.fila-activa]="seleccionId() === m.id"
+                (click)="alternar(m)"
+                (keydown.enter)="alternar(m)"
+                tabindex="0"
+                role="button"
+                [attr.aria-pressed]="seleccionId() === m.id"
+              >
+                <td class="text-nowrap">
+                  <div>{{ m.fecha | fechaDm }}</div>
+                  @if (m.comprobante) {
+                    <div class="sub">{{ m.comprobante }}</div>
+                  }
+                </td>
+                <td>
+                  <div>{{ m.detalle }}</div>
+                  <div class="sub">{{ m.cuentaBancaria.banco }}</div>
+                </td>
+                <td class="text-end text-nowrap">
+                  <span [class.credito]="m.esCredito" [class.debito]="!m.esCredito">
+                    {{ m.esCredito ? '+' : '−' }}{{ m.importe | number: '1.2-2' }}
+                  </span>
+                </td>
+              </tr>
+            }
+          </tbody>
+        </table>
+      </div>
+
+      @if (seleccionId() !== null) {
+        <div class="d-flex gap-2 mt-3">
+          <button
+            type="button"
+            class="btn btn-sm rounded-0 border-0 text-dark px-3"
+            style="background-color: #e4e4e4"
+            [disabled]="procesando()"
+            (click)="descartar.emit(seleccionId()!)"
+            title="Lo saca de la cola: sirve para comisiones, traspasos y gastos bancarios que por definicion no tienen contrapartida contable."
+          >
+            Descartar
+          </button>
+          <span class="sub align-self-center">
+            El Autoconciliar de arriba busca la contraparte de esta fila.
+          </span>
+        </div>
+      }
+    }
+  </div>
+</div>

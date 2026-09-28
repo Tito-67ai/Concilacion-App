@@ -1,0 +1,90 @@
+<div class="card rounded-0 border-secondary-subtle shadow-none h-100 bg-white panel">
+  <div class="card-body d-flex flex-column">
+    <h6 class="fw-bold mb-3 text-dark" style="font-size: 0.95rem">Movimientos en Xubio</h6>
+
+    <div class="input-group input-group-sm w-50 mb-3">
+      <input
+        type="text"
+        class="form-control rounded-0 border-secondary-subtle shadow-none border-end-0"
+        placeholder="Buscar"
+        [value]="texto()"
+        (input)="onBuscar($event)"
+      />
+      <span class="input-group-text bg-white rounded-0 border-secondary-subtle border-start-0 text-muted">&#128269;</span>
+    </div>
+
+    @if (!hayFiltro()) {
+      <div class="text-center text-secondary py-5 mt-4" style="font-size: 0.85rem">
+        Elegí los filtros para visualizar la información
+      </div>
+    } @else if (visibles().length === 0) {
+      <div class="text-center text-secondary py-5 mt-4" style="font-size: 0.85rem">
+        @if (texto()) {
+          Ningún movimiento coincide con “{{ texto() }}”.
+        } @else {
+          No hay movimientos contables pendientes para estos filtros.
+        }
+      </div>
+    } @else {
+      @if (contraparte()) {
+        <p class="sub mb-2">
+          Marcadas con <span class="badge rounded-pill text-white bg-success" style="font-size: 0.65rem">exacto</span>
+          las que tienen la misma fecha, signo e importe que la fila bancaria elegida: esas
+          se concilian solas.
+        </p>
+      }
+      <div class="tabla-scroll">
+        <table class="table table-sm mb-0 tabla-conc">
+          <thead>
+            <tr>
+              <th>Fecha</th>
+              <th>Concepto</th>
+              <th class="text-end">Importe</th>
+            </tr>
+          </thead>
+          <tbody>
+            @for (m of visibles(); track m.id) {
+              <tr
+                class="fila-seleccionable"
+                [class.fila-activa]="seleccionId() === m.id"
+                (click)="alternar(m)"
+                (keydown.enter)="alternar(m)"
+                tabindex="0"
+                role="button"
+                [attr.aria-pressed]="seleccionId() === m.id"
+              >
+                <td class="text-nowrap">
+                  <div>{{ m.fecha | fechaDm }}</div>
+                  @if (m.comprobante) {
+                    <div class="sub">{{ m.comprobante }}</div>
+                  }
+                </td>
+                <td>
+                  <div class="d-flex align-items-center gap-2">
+                    @if (exactoPorId().has(m.id)) {
+                      <span
+                        class="badge rounded-pill text-white bg-success flex-shrink-0"
+                        style="font-size: 0.6rem"
+                        title="Misma fecha, mismo signo y mismo importe que la fila bancaria elegida"
+                        >exacto</span
+                      >
+                    }
+                    <span>{{ m.concepto }}</span>
+                  </div>
+                  <div class="sub">
+                    {{ m.cuentaContable.codigo }} · {{ m.circuito.nombre }}
+                  </div>
+                </td>
+                <td class="text-end text-nowrap">
+                  <span [class.credito]="m.esCredito" [class.debito]="!m.esCredito">
+                    {{ m.esCredito ? '+' : '−' }}{{ m.importe | number: '1.2-2' }}
+                  </span>
+                </td>
+              </tr>
+            }
+          </tbody>
+        </table>
+      </div>
+    }
+  </div>
+</div>

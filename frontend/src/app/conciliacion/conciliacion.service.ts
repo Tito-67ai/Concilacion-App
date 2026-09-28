@@ -8,6 +8,7 @@ import {
   InfoExtractor,
   IsoDate,
   MovimientoBancario,
+  MovimientoContable,
   OpcionesFiltro,
 } from './conciliacion.model';
 
@@ -47,7 +48,36 @@ export class ConciliacionService {
   }
 
   /**
-   * 200 = conciliado. 409 = existe pero no hay coincidencia exacta. 404 = no existe.
+   * Panel DERECHO de la pantalla de matching: los contables sin pareja.
+   *
+   * Acepta cuenta contable, circuito y fechas, NO cuenta bancaria. En este lado todavia
+   * no se sabe de que cuenta bancaria viene el movimiento: eso se conoce recien cuando
+   * se elige la fila del otro panel. Por eso la barra de filtros de esa pantalla tiene
+   * los dos grupos de campos juntos.
+   */
+  getPendientesContables(filtro: FiltroConciliacion): Observable<MovimientoContable[]> {
+    return this.http.get<MovimientoContable[]>(`${BASE}/pendientes-contables`, {
+      params: this.construirParams(filtro, true, false),
+    });
+  }
+
+  /**
+   * Conciliacion manual: POST con el PAR, no con un id suelto.
+   *
+   * A diferencia de autoconciliar, NO busca por fecha e importe: para eso esta la
+   * pantalla, para los casos donde los dos lados dicen cosas distintas.
+   *
+   * 200 =oki. 400 = vinieron mal los ids. 404 = alguno no existe.
+   * 409 = alguno ya no esta pendiente, o son de signos distintos (credito contra
+   * debito). Ese ultimo llega con {error: 'SIGNO_INCOMPATIBLE', detalle: '...'} para
+   * que el mensaje diga eso y no el genérico "no coincide".
+   */
+  conciliar(idBanco: number, idContable: number): Observable<Conciliacion> {
+    return this.http.post<Conciliacion>(BASE, { idBanco, idContable });
+  }
+
+  /**
+   * 200 = conciliado. 409 = existe pero sin coincidencia. 404 = no existe.
    * Los tres casos se distinguen por status, asi que el componente puede decir la
    * verdad en vez de inventar un mensaje.
    */
@@ -105,10 +135,24 @@ export class ConciliacionService {
     return this.http.get<ImportacionBancaria[]>(IMPORT_BASE, { params });
   }
 
-  /** Los null no van: omitirlos es lo que hace que "sin filtro" signifique todo. */
-  private construirParams(filtro: FiltroConciliacion, incluirContables: boolean): HttpParams {
+  /**
+   * Arma los query params. Los null no van: omitirlos es lo que hace que "sin filtro"
+   * signifique todo.
+   *
+   * `incluirContables` / `incluirCuentaBancaria` dicen QUE campos son los que el
+   * endpoint mira. Antes era un solo booleano y por eso `pendientes-contables` mandaba
+   * `cuentaBancariaId`: el backend lo ignoraba, asi que no se notaba, pero en cuanto
+   * el endpoint lo respetara el panel derecho filtraria por una cuenta bancaria que
+   * justamente no corresponde. Es peor mandar de mas que no mandar, porque el dia
+   * que el backend cambie el comportamiento el filtro aparece solo y nadie lo revisa.
+   */
+  private construirParams(
+    filtro: FiltroConciliacion,
+    incluirContables: boolean,
+    incluirCuentaBancaria = true,
+  ): HttpParams {
     let params = new HttpParams();
-    if (filtro.cuentaBancariaId !== null) {
+    if (incluirCuentaBancaria && filtro.cuentaBancariaId !== null) {
       params = params.set('cuentaBancariaId', filtro.cuentaBancariaId);
     }
     if (incluirContables) {

@@ -1,0 +1,228 @@
+<div class="container-fluid px-4 py-3 workspace">
+  <div class="d-flex justify-content-between align-items-center mb-3">
+    <h5 class="fw-normal text-dark m-0" style="font-size: 1.15rem">Conciliación Bancaria Automática</h5>
+    <button type="button" class="btn btn-sm p-0 border-0 text-info" style="font-size: 0.85rem" (click)="ayuda.set(!ayuda())">
+      Ver ayuda
+    </button>
+  </div>
+
+  @if (ayuda()) {
+    <div class="alert alert-info rounded-0 py-2 px-3 small">
+      Elegí los filtros y apretá <strong>Aplicar</strong>. Después: hacé click en una fila del panel
+      <strong>Movimientos bancarios</strong> y una del panel <strong>Movimientos en Xubio</strong>, y apretá
+      <strong>Conciliar</strong>. Si la fila contable tiene el cartel verde
+      <em>exacto</em>, es que coincide en fecha, signo e importe con la bancaria y se puede conciliar
+      sola. <strong>Autoconciliar</strong> hace eso por vos. <strong>Descartar</strong> saca de la cola lo que
+      no tiene contrapartida contable (comisiones, traspasos).
+    </div>
+  }
+
+  <app-filtro-conciliacion
+    [opciones]="opciones()"
+    [mostrarContables]="true"
+    [exigirCampos]="true"
+    [cargando]="cargando()"
+    (aplicar)="aplicar($event)"
+    (limpiar)="limpiarFiltro()"
+  />
+
+  @if (mensaje(); as m) {
+    <div
+      class="alert rounded-0 py-2 px-3 small d-flex justify-content-between align-items-start gap-3"
+      [class.alert-success]="m.tipo === 'ok'"
+      [class.alert-danger]="m.tipo === 'error'"
+      [class.alert-info]="m.tipo === 'info'"
+    >
+      <span>{{ m.texto }}</span>
+      <button type="button" class="btn-close" aria-label="Cerrar" (click)="cerrarMensaje()"></button>
+    </div>
+  }
+
+  <ul class="nav nav-underline mb-3" style="border-bottom: 1px solid #dee2e6">
+    <li class="nav-item">
+      <button
+        type="button"
+        class="nav-link px-2 me-3"
+        [class.active]="tab() === 'a-conciliar'"
+        [class.fw-bold]="tab() === 'a-conciliar'"
+        (click)="cambiarTab('a-conciliar')"
+      >
+        Movimientos a conciliar ({{ banco().length }})
+      </button>
+    </li>
+    <li class="nav-item">
+      <button
+        type="button"
+        class="nav-link px-2"
+        [class.active]="tab() === 'conciliados'"
+        [class.fw-bold]="tab() === 'conciliados'"
+        (click)="cambiarTab('conciliados')"
+      >
+        Movimientos conciliados ({{ conciliados().length }})
+      </button>
+    </li>
+  </ul>
+
+  <div class="d-flex gap-2 mb-4 flex-wrap align-items-center">
+    <button
+      type="button"
+      class="btn btn-sm rounded-0 border-0 px-3"
+      [style.background-color]="puedeConciliar() ? '#005f9e' : '#e4e4e4'"
+      [style.color]="puedeConciliar() ? '#fff' : '#a1a1a1'"
+      [disabled]="!puedeConciliar() || procesando()"
+      (click)="conciliar()"
+      title="Concilia la fila bancaria elegida con la contable elegida. Necesita una de cada lado."
+    >
+      Conciliar
+    </button>
+    <button
+      type="button"
+      class="btn btn-sm rounded-0 border-0 px-3"
+      [style.background-color]="puedeAutoconciliar() ? '#e4e4e4' : '#e4e4e4'"
+      [style.color]="puedeAutoconciliar() ? '#212529' : '#a1a1a1'"
+      [disabled]="!puedeAutoconciliar() || procesando()"
+      (click)="autoconciliar(selBanco()!)"
+      title="Busca solo, por fecha, signo e importe, la contraparte de la fila bancaria elegida. Si no hay coincidencia exacta devuelve 409."
+    >
+      Autoconciliar 🪄
+    </button>
+
+    <div class="position-relative">
+      <button
+        type="button"
+        class="btn btn-sm rounded-0 border-0 text-dark px-3"
+        style="background-color: #e4e4e4"
+        [disabled]="!filtro() || importando()"
+        (click)="menuImportar.set(!menuImportar())"
+        title="Traer movimientos del banco, o subir un archivo exportado del home banking."
+      >
+        @if (importando()) {
+          Importando…
+        } @else {
+          Importar &#9662;
+        }
+      </button>
+      @if (menuImportar()) {
+        <div class="menu dropdown-menu show rounded-0 shadow">
+          @for (x of extractores(); track x.codigo) {
+            @if (x.puedeEjecutarseSolo) {
+              <button type="button" class="dropdown-item" [title]="x.descripcion" (click)="correrExtractor(x.codigo)">
+                {{ x.codigo }} — {{ x.descripcion }}
+              </button>
+            }
+            @if (x.aceptaArchivo) {
+              <label class="dropdown-item" [title]="x.descripcion">
+                Subir archivo ({{ x.codigo }})
+                <input type="file" class="d-none" accept=".csv,.txt" (change)="subirArchivo($event)" />
+              </label>
+            }
+          }
+          @if (extractores().length === 0) {
+            <span class="dropdown-item-text text-muted small">No hay ninguna fuente de importación disponible.</span>
+          }
+        </div>
+      }
+    </div>
+
+    <button
+      type="button"
+      class="btn btn-sm rounded-0 border-0 text-dark px-3"
+      style="background-color: #e4e4e4"
+      [disabled]="!filtro()"
+      (click)="exportar()"
+      title="Descarga en CSV lo que se está viendo en esta pestaña, con el filtro y la búsqueda aplicados."
+    >
+      Exportar
+    </button>
+
+    @if (seleccionados().banco || seleccionados().contable) {
+      <span class="sub ms-auto text-end">
+        @if (seleccionados().banco && seleccionados().contable) {
+          banco: {{ seleccionados().banco!.detalle }} ↔ contable: {{ seleccionados().contable!.concepto }}
+        } @else if (seleccionados().banco) {
+          Elegí ahora una fila del panel de Xubio.
+        } @else {
+          Elegí ahora una fila del panel bancario.
+        }
+      </span>
+    }
+  </div>
+
+  @if (tab() === 'a-conciliar') {
+    <div class="row g-4">
+      <div class="col-md-6">
+        <app-panel-banco
+          [movimientos]="banco()"
+          [seleccionId]="selBanco()"
+          [hayFiltro]="filtro() !== null"
+          [procesando]="procesando()"
+          (seleccionar)="selBanco.set($event)"
+          (buscar)="busquedaBanco.set($event)"
+          (descartar)="descartar($event)"
+        />
+      </div>
+      <div class="col-md-6">
+        <app-panel-xubio
+          [movimientos]="contable()"
+          [seleccionId]="selContable()"
+          [hayFiltro]="filtro() !== null"
+          [contraparte]="contraparte()"
+          (seleccionar)="selContable.set($event)"
+          (buscar)="busquedaContable.set($event)"
+        />
+      </div>
+    </div>
+  } @else {
+    <div class="card rounded-0 border-secondary-subtle shadow-none bg-white">
+      <div class="card-body">
+        @if (!filtro()) {
+          <div class="text-center text-secondary py-5" style="font-size: 0.85rem">
+            Elegí los filtros para visualizar la información
+          </div>
+        } @else if (conciliados().length === 0) {
+          <div class="text-center text-secondary py-5" style="font-size: 0.85rem">
+            No hay movimientos conciliados para estos filtros.
+          </div>
+        } @else {
+          <div class="tabla-scroll">
+            <table class="table table-sm mb-0 tabla-conc">
+              <thead>
+                <tr>
+                  <th>Fecha</th>
+                  <th>Detalle</th>
+                  <th class="text-end">Importe</th>
+                  <th>Cuenta bancaria</th>
+                  <th>Cuenta contable</th>
+                  <th>Circuito</th>
+                  <th>Comprobantes</th>
+                </tr>
+              </thead>
+              <tbody>
+                @for (c of conciliados(); track c.id) {
+                  <tr>
+                    <td class="text-nowrap">{{ c.fecha | fechaDm }}</td>
+                    <td>
+                      <div>{{ c.detalle }}</div>
+                      <div class="sub">{{ c.origen }}</div>
+                    </td>
+                    <td class="text-end text-nowrap">
+                      <span [class.credito]="c.esCredito" [class.debito]="!c.esCredito">
+                        {{ c.esCredito ? '+' : '−' }}{{ c.importe | number: '1.2-2' }}
+                      </span>
+                    </td>
+                    <td>{{ c.cuentaBancaria.banco }}</td>
+                    <td class="text-nowrap">{{ c.cuentaContable.codigo }}</td>
+                    <td>{{ c.circuito.nombre }}</td>
+                    <td class="sub text-nowrap">
+                      {{ c.movimientoBancario.comprobante || '—' }} / {{ c.movimientoContable.comprobante }}
+                    </td>
+                  </tr>
+                }
+              </tbody>
+            </table>
+          </div>
+        }
+      </div>
+    </div>
+  }
+</div>

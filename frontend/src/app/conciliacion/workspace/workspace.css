@@ -1,0 +1,39 @@
+/* El menu de "Importar" es un .dropdown-menu de Bootstrap pero sin el JS de
+   Bootstrap: no esta instalado, y meterlo solo para un popover obliga a cargar el
+   bundle entero de Bootstrap (incluye jQuery-sized) por un unico desplegable. Con un
+   signal y `.show` alcanza, y el markup sigue siendo el que habria que usar si
+   despues se agrega el JS. */
+.menu {
+  top: calc(100% + 2px);
+  left: 0;
+  min-width: 18rem;
+  padding: 0.25rem 0;
+}
+
+/* Pestañas: Bootstrap pone el activo en negro y subrayado grueso. La barra de
+   conciliación usa el azul de la marca, que es lo que el mockup muestra. */
+.nav-underline .nav-link {
+  color: #6c757d;
+  font-size: 0.9rem;
+  border-bottom: 2px solid transparent;
+  background: none;
+  border-top: 0;
+  border-left: 0;
+  border-right: 0;
+}
+
+.nav-underline .nav-link:hover {
+  color: #005f9e;
+}
+
+.nav-underline .nav-link.active {
+  color: #005f9e;
+  border-bottom-color: #005f9e;
+}
+
+/* La pantalla del mockup es de punta a punta, sin la navbar oscura del shell viejo.
+   Se le saca el padding-bottom de bootstrap para que la ultima fila de la tabla no
+   quede con un hueco de mas al final del scroll. */
+.workspace {
+  padding-bottom: 0.5rem;
+}

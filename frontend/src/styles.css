@@ -13,3 +13,67 @@ html {
 body {
   background-color: #f3f4f6;
 }
+
+/* ─── Paneles de conciliacion (global, los usan los dos) ───────────────────────
+   Bootstrap no tiene estado "seleccionado" para una fila de tabla, y en una
+   pantalla de matching la fila elegida es el dato mas importante que hay en
+   pantalla. Sin esto, elegir una fila de aca y una de alla se ven iguales y no
+   hay forma de saber que estas conciliando. */
+
+.fila-seleccionable {
+  cursor: pointer;
+  transition: background-color 0.1s ease-in-out;
+}
+
+.fila-seleccionable:hover {
+  background-color: #f4f4f4;
+}
+
+.fila-seleccionable:focus-visible {
+  outline: 2px solid #005f9e;
+  outline-offset: -2px;
+}
+
+.fila-activa,
+.fila-activa:hover {
+  background-color: #e2f0fb;
+  box-shadow: inset 3px 0 0 #005f9e;
+}
+
+/* Texto secundario de una celda: comprobante, banco, cuenta. */
+.sub {
+  font-size: 0.72rem;
+  color: #6c757d;
+}
+
+/* El signo va en el color, no solo en el "+"/"−": es la fila que mas se mira de
+   las dos, y a simple vista tiene que verse de que lado esta. */
+.credito {
+  color: #157347;
+}
+
+.debito {
+  color: #b02a37;
+}
+
+.tabla-scroll {
+  overflow-y: auto;
+  max-height: 26rem;
+}
+
+/* Grilla de conciliación: una fila por movimiento, con el estado en un color
+   propio en vez de confiar en la fuente del dato. */
+.tabla-conc th {
+  font-size: 0.72rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+  color: #6c757d;
+  border-bottom: 1px solid #dee2e6;
+  white-space: nowrap;
+}
+
+.tabla-conc td {
+  vertical-align: middle;
+  font-size: 0.85rem;
+}
