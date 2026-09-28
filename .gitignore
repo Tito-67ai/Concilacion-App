@@ -1,0 +1,21 @@
+# Compilados y artefactos de build
+target/
+.flattened-pom.xml
+.mvn/timeline.properties
+
+# Logs de ejecucion. Los *.log del proyecto son de corridas locales, no del codigo.
+*.log
+logs/
+
+# .settings/ .classpath .project NO van aqui a proposito: estan trackeados desde
+# el origen porque el proyecto se abre con Eclipse y forman parte de su config.
+# Si algun dia se decide dejar de trackearlos, se borran con git rm --cached.
+
+# Sistema operativo
+Thumbs.db
+desktop.ini
+.DS_Store
+
+# Locales / secretos
+*.env
+.env.local

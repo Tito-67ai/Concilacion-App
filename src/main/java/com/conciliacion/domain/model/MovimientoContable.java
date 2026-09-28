@@ -49,6 +49,14 @@ public class MovimientoContable {
     @Column(nullable = false, length = 20)
     private EstadoConciliacion estado;
 
+    @ManyToOne(fetch = FetchType.EAGER, optional = false)
+    @JoinColumn(name = "cuenta_contable_id", nullable = false)
+    private CuentaContable cuentaContable;
+
+    @ManyToOne(fetch = FetchType.EAGER, optional = false)
+    @JoinColumn(name = "circuito_contable_id", nullable = false)
+    private CircuitoContable circuito;
+
     @NotNull
     @Column(nullable = false)
     private LocalDateTime importadoEn;
@@ -56,13 +64,16 @@ public class MovimientoContable {
     public MovimientoContable() {}
 
     public MovimientoContable(String comprobante, LocalDate fecha, String concepto,
-                              BigDecimal importe, Boolean esCredito, OrigenMovimiento origen) {
+                              BigDecimal importe, Boolean esCredito, OrigenMovimiento origen,
+                              CuentaContable cuentaContable, CircuitoContable circuito) {
         this.comprobante = comprobante;
         this.fecha = fecha;
         this.concepto = concepto;
         this.importe = importe;
         this.esCredito = esCredito;
         this.origen = origen;
+        this.cuentaContable = cuentaContable;
+        this.circuito = circuito;
         this.estado = EstadoConciliacion.PENDIENTE;
         this.importadoEn = LocalDateTime.now();
     }
@@ -76,5 +87,7 @@ public class MovimientoContable {
     public OrigenMovimiento getOrigen() { return origen; }
     public EstadoConciliacion getEstado() { return estado; }
     public LocalDateTime getImportadoEn() { return importadoEn; }
+    public CuentaContable getCuentaContable() { return cuentaContable; }
+    public CircuitoContable getCircuito() { return circuito; }
     public void setEstado(EstadoConciliacion estado) { this.estado = estado; }
 }

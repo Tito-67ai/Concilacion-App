@@ -9,7 +9,10 @@ import java.time.LocalDateTime;
 
 /**
  * Movimiento del lado del extracto bancario. Es "lo que dice el banco" que paso,
- * con su CBU, fecha, detalle e importe; y en que estado esta dentro del circuito.
+ * con su fecha, detalle e importe, y a que cuenta pertenece.
+ *
+ * El CBU ya no vive aca: esta en CuentaBancaria, y se lee con getCbu(). Dejarlo
+ * duplicado como columna suelta era lo que impedia filtrar por cuenta.
  */
 @Entity
 @Table(name = "movimiento_bancario")
@@ -18,10 +21,6 @@ public class MovimientoBancario {
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;
-
-    @NotNull
-    @Column(nullable = false, length = 30)
-    private String cbu;
 
     @NotNull
     @Column(nullable = false)
@@ -44,15 +43,20 @@ public class MovimientoBancario {
     @Column(nullable = false, length = 20)
     private EstadoConciliacion estado;
 
+    /** Reemplaza al CBU suelto: ahora el movimiento pertenece a una cuenta. */
+    @ManyToOne(fetch = FetchType.EAGER, optional = false)
+    @JoinColumn(name = "cuenta_bancaria_id", nullable = false)
+    private CuentaBancaria cuentaBancaria;
+
     @NotNull
     @Column(nullable = false)
     private LocalDateTime importadoEn;
 
     public MovimientoBancario() {}
 
-    public MovimientoBancario(String cbu, LocalDate fecha, String detalle,
+    public MovimientoBancario(CuentaBancaria cuentaBancaria, LocalDate fecha, String detalle,
                               BigDecimal importe, Boolean esCredito) {
-        this.cbu = cbu;
+        this.cuentaBancaria = cuentaBancaria;
         this.fecha = fecha;
         this.detalle = detalle;
         this.importe = importe;
@@ -62,7 +66,8 @@ public class MovimientoBancario {
     }
 
     public Long getId() { return id; }
-    public String getCbu() { return cbu; }
+    public String getCbu() { return cuentaBancaria.getCbu(); }
+    public CuentaBancaria getCuentaBancaria() { return cuentaBancaria; }
     public LocalDate getFecha() { return fecha; }
     public String getDetalle() { return detalle; }
     public BigDecimal getImporte() { return importe; }
