@@ -18,3 +18,35 @@ spring:
     console:
       enabled: true
       path: /h2-console
+  servlet:
+    multipart:
+      max-file-size: 20MB
+      max-request-size: 25MB
+
+conciliacion:
+  bancos:
+    # ── Una entrada por fuente. Para agregar un banco: este bloque + un @Component que
+    #    implemente ExtractorBancario. No hay que tocar nada mas.
+    #
+    # ── DONDE VAN LAS CREDENCIALES: NO ACA. Aca solo va estructura (nombre, si esta
+    #    prendido, a que URL pegarle). El token va como variable de entorno:
+    #
+    #      GALICIA_API_TOKEN=${GALICIA_API_TOKEN:}
+    #
+    #    con el valor exportado en la maquina o en el secret manager del deploy. Si
+    #    queda escrito aca, el proximo `git push` lo sube a GitHub para siempre.
+    #    BancoConfiguracion no tiene ningun campo `token` a proposito: agregar uno
+    #    obliga a decidir como se cifra.
+    #
+    # ──Ejemplo de como quedaria un banco real, commented out hasta que exista:
+    #
+    # GALICIA_API:
+    #   nombre: Banco Galicia
+    #   habilitado: true
+    #   url-base: https://api.banco.com.ar
+    DEMO:
+      nombre: Datos de ejemplo
+      habilitado: true
+    CSV:
+      nombre: Archivo CSV del banco
+      habilitado: true

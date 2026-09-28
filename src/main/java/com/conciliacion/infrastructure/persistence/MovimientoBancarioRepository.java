@@ -8,6 +8,7 @@ import org.springframework.data.repository.query.Param;
 
 import java.math.BigDecimal;
 import java.time.LocalDate;
+import java.util.Collection;
 import java.util.List;
 
 public interface MovimientoBancarioRepository extends JpaRepository<MovimientoBancario, Long> {
@@ -33,4 +34,22 @@ public interface MovimientoBancarioRepository extends JpaRepository<MovimientoBa
 
     List<MovimientoBancario> findByFechaAndImporteAndEsCredito(
             LocalDate fecha, BigDecimal importe, Boolean esCredito);
+
+    /**
+     * De los comprobantes dados, cuales YA estan cargados en esa cuenta. Es la
+     * consulta que hace idempotente una reimportacion: la ingesta pasa por aca antes
+     * de insertar y descarta los que ya estaban.
+     *
+     * Proyecta solo el comprobante, no la entidad entera: con 400 movimientos por
+     * pagina trayendo 5 FKs EAGER cada uno, traer la entidad entera deja de ser una
+     * consulta y pasa a ser una descarga.
+     */
+    @Query("""
+            select m.comprobante from MovimientoBancario m
+            where m.cuentaBancaria.id = :cuentaBancariaId
+              and m.comprobante in :comprobantes
+            """)
+    List<String> findComprobantesExistentes(
+            @Param("cuentaBancariaId") Long cuentaBancariaId,
+            @Param("comprobantes") Collection<String> comprobantes);
 }
