@@ -44,9 +44,16 @@ conciliacion:
     #   nombre: Banco Galicia
     #   habilitado: true
     #   url-base: https://api.banco.com.ar
-    DEMO:
-      nombre: Datos de ejemplo
+    #
+    # ── Las dos que existen hoy. Son de archivo, no de API: el usuario sube el
+    #    extracto y no hay ningun token que guardar.
+    EXCEL:
+      nombre: Planilla de Excel del banco
       habilitado: true
-    CSV:
-      nombre: Archivo CSV del banco
+    PDF:
+      nombre: Extracto en PDF del banco
       habilitado: true
+    #
+    # Para apagar una sin desinstalar nada: `habilitado: false`. El extractor sigue
+    # en el codigo pero desaparece del menu Importar, y un POST con ese codigo
+    # devuelve 404 con la lista de los que si estan.

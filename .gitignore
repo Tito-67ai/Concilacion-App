@@ -7,6 +7,11 @@ target/
 *.log
 logs/
 
+# Lo mismo que *.log pero para la salida de error. Aparece sola al arrancar el jar
+# con Start-Process -RedirectStandardError, que es la unica forma de levantarlo en
+# una maquina donde java no esta en el PATH.
+*.err
+
 # .settings/ .classpath .project NO van aqui a proposito: estan trackeados desde
 # el origen porque el proyecto se abre con Eclipse y forman parte de su config.
 # Si algun dia se decide dejar de trackearlos, se borran con git rm --cached.

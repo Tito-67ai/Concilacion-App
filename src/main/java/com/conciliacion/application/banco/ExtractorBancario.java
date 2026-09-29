@@ -7,7 +7,7 @@ import java.util.List;
 
 /**
  * El contrato que tiene que cumplir CUALQUIER fuente de movimientos bancarios:
- * un CSV que sube el usuario, la API de Galicia, la de Santander, la de Xubio.
+ * un Excel o un PDF que sube el usuario, la API de Galicia, la de Santander.
  *
  * Es una interfaz, no una clase, a proposito: cuando llegue el banco nuevo se agrega
  * UNA clase y no se toca nada mas. La deduplicacion, el registro de la corrida y el
@@ -35,7 +35,7 @@ import java.util.List;
  */
 public interface ExtractorBancario {
 
-    /** Identificador estable de la fuente. Ej: DEMO, CSV, GALICIA_API, XUBIO_API. */
+    /** Identificador estable de la fuente. Ej: EXCEL, PDF, GALICIA_API, XUBIO_API. */
     String codigo();
 
     /** Texto para mostrar en la UI. */
@@ -48,8 +48,26 @@ public interface ExtractorBancario {
      */
     OrigenMovimiento origen();
 
-    /** Si la fuente acepta un archivo subido por el usuario (solo CSV). */
+    /** Si la fuente acepta un archivo subido por el usuario (Excel, PDF). */
     default boolean aceptaArchivo() { return false; }
+
+    /**
+     * Que extensiones acepta esta fuente, con el punto y en minusculas: ".xlsx".
+     *
+     * Va en el extractor y no en el HTML del boton Importar a proposito. Con la
+     * lista escrita en el frontend, el dia que la fuente de PDF acepte tambien
+     * ".pdf" y una imagen habria que acordarse de tocar la pantalla; peor, si
+     * alguien agrega un extractor y olvida esa linea, el menu ofrece subir un
+     * archivo que el backend va a rechazar con un 422.
+     *
+     * Solo se usa para el atributo `accept` del selector de archivos, que es una
+     * AYUDA visual, no una seguridad: el backend sigue teniendo que decidir si lo
+     * que llego se puede leer, y lo hace (ver `extraerDeArchivo` de cada fuente).
+     *
+     * Lista vacia = no se filtra el selector, se ofrecen todos los archivos. Para
+     * una fuente de API, que no acepta archivo, es lo que corresponde.
+     */
+    default List<String> extensionesAceptadas() { return List.of(); }
 
     /**
      * Si la fuente puede correr sola, pidiéndole los datos a un sistema externo.

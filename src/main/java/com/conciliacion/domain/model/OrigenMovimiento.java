@@ -15,8 +15,20 @@ package com.conciliacion.domain.model;
 public enum OrigenMovimiento {
     /** Alta desde la pantalla. */
     MANUAL,
-    /** Archivo del banco subido por el usuario (CSV/XLSX). */
+    /**
+     * Archivo del banco subido por el usuario.
+     *
+     * OJO: el nombre dice CSV pero hoy el extractor de CSV no esta. Queda el valor
+     * porque es lo que tienen escrito las filas que se importaron antes, y como el
+     * enum se persiste como STRING, borrarlo haria fallar la lectura de esas filas.
+     * Un enum no se cleans: se deprecia.
+     */
+    @Deprecated
     CSV,
+    /** Planilla de Excel (.xlsx / .xls) subida por el usuario. */
+    EXCEL,
+    /** Extracto en PDF con capa de texto, subido por el usuario. */
+    PDF,
     /** API de un banco: Galicia, Santander, BBVA, etc. */
     API_BANCARIA,
     /** API de Xubio (lado contable). */
