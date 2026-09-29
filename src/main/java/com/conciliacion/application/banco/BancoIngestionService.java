@@ -15,11 +15,12 @@ import java.util.List;
 import java.util.Set;
 
 /**
- * Unico camino por el que entran movimientos bancarios a la base. tanto el CSV que
- * sube el usuario, como la API de Galicia, como la de Xubio pasan por aca.
+ * Unico camino por el que entran movimientos bancarios a la base. Tanto el Excel que
+ * sube el usuario, como el PDF, como la API de Galicia o la de Xubio pasan por aca.
  *
  * Concentrarlo aca es lo que permite que un banco nuevo no reimprima deduplicacion:
- *ExtractorDemo lo usa, lo va a usar el CSV, y lo va a usar el conector de cada banco.
+ * el extractor de Excel lo usa, lo va a usar el de PDF, y lo va a usar el conector de
+ * cada banco.
  *
  * DEDUPLICACION
  * Las APIs bancarias piden ventanas de fechas y siempre hay que pedir un margen hacia

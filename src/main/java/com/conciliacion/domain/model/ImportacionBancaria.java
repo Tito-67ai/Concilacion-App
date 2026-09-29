@@ -36,7 +36,7 @@ public class ImportacionBancaria {
     private OrigenMovimiento origen;
 
     /**
-     * Que conector concreto produjo esto: DEMO, CSV, GALICIA_API, XUBIO_API.
+     * Que conector concreto produjo esto: EXCEL, PDF, GALICIA_API, XUBIO_API.
      * Es texto y no un enum a proposito: cada banco nuevo agrega UN valor y no
      * obliga a tocar este enum ni el contrato del frontend.
      */

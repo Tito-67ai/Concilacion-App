@@ -23,8 +23,9 @@ import java.util.List;
  * deja una corrida registrada. Son dos cosas distintas, y el historial de "que
  * bajamos" va a existir al margen del de "que conciliamos".
  *
- * Cuando se conecte una API real, esta clase no cambia. Lo que cambia es ExtractorDemo,
- * que se borra, y aparece el extractor del banco en su lugar.
+ * Cuando se conecte una API real, esta clase no cambia. Lo unico que hay que hacer es
+ * escribir el extractor del banco con @Component: aparece solo en el registro, en el
+ * listado que arma el boton Importar, y en la deduplicacion.
  */
 @RestController
 @RequestMapping("/api/importaciones")
@@ -50,7 +51,11 @@ public class ImportacionController {
                 .toList();
     }
 
-    /** Corre una fuente que se conecta sola (DEMO hoy; APIs bancarias en el futuro). */
+    /**
+     * Corre una fuente que se conecta sola. Hoy no hay ninguna: Excel y PDF necesitan
+     * archivo. El endpoint queda porque es el que va a usar la API de un banco, que se
+     * llama sola y no tiene archivo que subir.
+     */
     @PostMapping("/extractores/{codigo}")
     public ImportacionBancaria importar(
             @PathVariable String codigo,
@@ -60,15 +65,14 @@ public class ImportacionController {
         return ingesta.importar(codigo, cuentaBancariaId, new RangoFechas(desde, hasta));
     }
 
-    /** Sube un archivo que baja el usuario del home banking (CSV). */
+    /** Sube un archivo que baja el usuario del home banking (Excel o PDF). */
     @PostMapping("/archivo")
     public ImportacionBancaria importarArchivo(
             @RequestParam("archivo") MultipartFile archivo,
-            @RequestParam(required = false) String extractor,
+            @RequestParam String extractor,
             @RequestParam Long cuentaBancariaId,
             @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate desde,
             @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate hasta) {
-        String codigo = (extractor == null || extractor.isBlank()) ? "CSV" : extractor;
         byte[] contenido;
         try {
             contenido = archivo.getBytes();
@@ -76,7 +80,7 @@ public class ImportacionController {
             // El archivo se corto o fallo la lectura. Es problema del cliente, no 500.
             throw new ArchivoInvalidoException("No se pudo leer el archivo: " + e.getMessage());
         }
-        return ingesta.importarArchivo(codigo, cuentaBancariaId,
+        return ingesta.importarArchivo(extractor, cuentaBancariaId,
                 new RangoFechas(desde, hasta), contenido);
     }
 
@@ -90,12 +94,21 @@ public class ImportacionController {
         return importacionRepo.findByCuentaBancariaIdOrderByIniciadaEnDesc(cuentaBancariaId);
     }
 
-    /** Lo que la UI necesita mostrar para elegir una fuente. */
+    /**
+     * Lo que la UI necesita mostrar para elegir una fuente.
+     *
+     * `extensiones` viaja con el resto a proposito: el menu Importar arma el
+     * `accept` del selector de archivos con esto. Si la lista estuviera escrita en
+     * el HTML del frontend, agregar un extractor obligaria a acordarse de tocar la
+     * pantalla, y olvidar esa linea deja el boton ofreciendo archivos que el
+     * backend va a rechazar.
+     */
     public record InfoExtractor(String codigo, String descripcion, String origen,
-                                boolean aceptaArchivo, boolean puedeEjecutarseSolo) {
+                                boolean aceptaArchivo, boolean puedeEjecutarseSolo,
+                                List<String> extensiones) {
         static InfoExtractor de(ExtractorBancario e) {
             return new InfoExtractor(e.codigo(), e.descripcion(), e.origen().name(),
-                    e.aceptaArchivo(), e.puedeEjecutarseSolo());
+                    e.aceptaArchivo(), e.puedeEjecutarseSolo(), e.extensionesAceptadas());
         }
     }
 

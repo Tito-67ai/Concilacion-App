@@ -1,6 +1,8 @@
 package com.conciliacion.infrastructure.web;
 
 import com.conciliacion.application.banco.ExtractorDesconocidoException;
+import com.conciliacion.infrastructure.banco.ExtractorExcelBanco;
+import com.conciliacion.infrastructure.banco.ExtractorPdfBanco;
 import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
@@ -59,6 +61,28 @@ public class ApiExceptionHandler {
     public ResponseEntity<Map<String, Object>> archivoInvalido(RuntimeException e) {
         return ResponseEntity.unprocessableEntity().body(Map.of(
                 "error", "ARCHIVO_INVALIDO",
+                "detalle", e.getMessage()));
+    }
+
+    /**
+     * El archivo llego entero pero su contenido no se puede trabajar: un .xlsx que
+     * Excel no puede abrir, un PDF cifrado, un PDF escaneado sin capa de texto.
+     *
+     * 422 y no 400: el pedido esta bien formado y la cuenta y el rango son validos,
+     * lo que no sirve es lo que el usuario subio. Con 400 el frontend suele mostrar
+     * "revisá los datos" y el usuario revisa los filtros, que estan perfecto. Con
+     * 422 el mensaje puede ser el del archivo, que es lo que hay que arreglar.
+     *
+     * Van los dos extractores de archivo juntos y no por separado porque el cliente
+     * los trata igual: no reintenta, muestra el texto y le deja subir otro.
+     */
+    @ExceptionHandler({
+            ExtractorExcelBanco.NoSePudoAbrirException.class,
+            ExtractorPdfBanco.NoSePudoAbrirException.class,
+            ExtractorPdfBanco.PdfSinCapaDeTextoException.class})
+    public ResponseEntity<Map<String, Object>> archivoNoUtilizable(RuntimeException e) {
+        return ResponseEntity.unprocessableEntity().body(Map.of(
+                "error", "ARCHIVO_NO_UTILIZABLE",
                 "detalle", e.getMessage()));
     }
 }
