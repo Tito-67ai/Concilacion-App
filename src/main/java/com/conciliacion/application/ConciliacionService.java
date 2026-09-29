@@ -1,5 +1,7 @@
 package com.conciliacion.application;
 
+import com.conciliacion.application.catalogo.CatalogoNoDisponibleException;
+import com.conciliacion.application.catalogo.EstadoCatalogos;
 import com.conciliacion.domain.model.CircuitoContable;
 import com.conciliacion.domain.model.Conciliacion;
 import com.conciliacion.domain.model.CuentaBancaria;
@@ -31,19 +33,22 @@ public class ConciliacionService {
     private final CuentaBancariaRepository cuentaBancariaRepo;
     private final CuentaContableRepository cuentaContableRepo;
     private final CircuitoContableRepository circuitoRepo;
+    private final EstadoCatalogos estadoCatalogos;
 
     public ConciliacionService(MovimientoBancarioRepository bancoRepo,
                                MovimientoContableRepository contableRepo,
                                ConciliacionRepository conciliacionRepo,
                                CuentaBancariaRepository cuentaBancariaRepo,
                                CuentaContableRepository cuentaContableRepo,
-                               CircuitoContableRepository circuitoRepo) {
+                               CircuitoContableRepository circuitoRepo,
+                               EstadoCatalogos estadoCatalogos) {
         this.bancoRepo = bancoRepo;
         this.contableRepo = contableRepo;
         this.conciliacionRepo = conciliacionRepo;
         this.cuentaBancariaRepo = cuentaBancariaRepo;
         this.cuentaContableRepo = cuentaContableRepo;
         this.circuitoRepo = circuitoRepo;
+        this.estadoCatalogos = estadoCatalogos;
     }
 
     /**
@@ -71,6 +76,30 @@ public class ConciliacionService {
 
     @Transactional(readOnly = true)
     public OpcionesFiltro opciones() {
+        // Si hay una fuente de catalogos prendida y no se pudo leer, NO se sirven
+        // las opciones de la base. Se tiran 503 con el motivo.
+        //
+        // ── POR QUE ACA Y NO EN EL CONTROLADOR ──────────────────────────────────
+        //
+        // Porque la decision "estos datos son de fiar" es del dominio, no del
+        // transporte. El mismo pedido, llegue por REST o por lo que sea despues,
+        // tiene que dar el mismo resultado.
+        //
+        // ── POR QUE NO SE SIRVEN IGUAL ──────────────────────────────────────────
+        //
+        // Porque en la base puede haber cuentas sembradas que NO son de la
+        // empresa. Servirlas con un 200 es la peor version posible del fallo: el
+        // desplegable se ve lleno y correcto, el usuario elige "Cuenta Corriente /
+        // Banco Galicia" creyendo que es real, y no hay ni un signo de que algo
+        // este mal. Un error visible se arregla mirando; eso no.
+        if (estadoCatalogos.hayProblema()) {
+            // El `reintentable` sale del estado y no se hardcodea: el cliente ya
+            // decidio si reintentar sirve cuando lanzo la excepcion. Decir siempre
+            // que si hace que un boton de "reintentar" con credenciales malas
+            // prometa algo que no va a pasar.
+            throw new CatalogoNoDisponibleException(estadoCatalogos.motivo(),
+                    estadoCatalogos.reintentable());
+        }
         return new OpcionesFiltro(cuentaBancariaRepo.findAllByOrderByNombreAsc(),
                 cuentaContableRepo.findAllByOrderByCodigoAsc(),
                 circuitoRepo.findAllByOrderByNombreAsc());

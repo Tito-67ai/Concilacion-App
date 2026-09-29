@@ -1,6 +1,7 @@
 package com.conciliacion.infrastructure.web;
 
 import com.conciliacion.application.banco.ExtractorDesconocidoException;
+import com.conciliacion.application.catalogo.CatalogoNoDisponibleException;
 import com.conciliacion.infrastructure.banco.ExtractorExcelBanco;
 import com.conciliacion.infrastructure.banco.ExtractorPdfBanco;
 import org.springframework.dao.DataIntegrityViolationException;
@@ -84,5 +85,31 @@ public class ApiExceptionHandler {
         return ResponseEntity.unprocessableEntity().body(Map.of(
                 "error", "ARCHIVO_NO_UTILIZABLE",
                 "detalle", e.getMessage()));
+    }
+
+    /**
+     * No se pudieron leer los catalogos de Xubio.
+     *
+     * 503 y no 500 ni 200 con lista vacia.
+     *
+     * - No 200 con vacio, porque en la pantalla un desplegable sin opciones y un
+     *   desplegable que no se pudo cargar se ven EXACTAMENTE igual, y significan
+     *   cosas opuestas para el usuario: "no tenes cuentas cargadas en Xubio"
+     *   contra "no pudimos preguntarle a Xubio". Con la lista vacia el usuario
+     *   se va a Xubio a revisar algo que esta perfecto.
+     * - No 500, porque aca no se rompio nada: el pedido se hizo bien y el
+     *   servicio de afuera no contesto. Un 500 le dice al cliente que la app esta
+     *   rota y no tiene sentido reintentar.
+     *
+     * El `reintentable` viaja en el cuerpo para que el frontend pueda ofrecer
+     * "reintentar" solo cuando sirve: con credenciales malas el boton de
+     * reintentar no hace nada util, porque el mismo pedido va a fallar igual.
+     */
+    @ExceptionHandler(CatalogoNoDisponibleException.class)
+    public ResponseEntity<Map<String, Object>> catalogoNoDisponible(CatalogoNoDisponibleException e) {
+        return ResponseEntity.status(HttpStatus.SERVICE_UNAVAILABLE).body(Map.of(
+                "error", "CATALOGO_NO_DISPONIBLE",
+                "detalle", e.getMessage() == null ? "No se pudieron leer los catalogos." : e.getMessage(),
+                "reintentable", e.esReintentable()));
     }
 }
