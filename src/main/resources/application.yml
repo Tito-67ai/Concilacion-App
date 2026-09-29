@@ -57,3 +57,54 @@ conciliacion:
     # Para apagar una sin desinstalar nada: `habilitado: false`. El extractor sigue
     # en el codigo pero desaparece del menu Importar, y un POST con ese codigo
     # devuelve 404 con la lista de los que si estan.
+  #
+  # ── Catalogo de cuentas y circuitos desde Xubio ────────────────────────────────
+  #
+  # Los desplegables del filtro (cuenta bancaria, cuenta contable, circuito) se
+  # llenan con lo que haya en la base. Al arrancar, esta fuente los completa con
+  # los catalogos de Xubio.
+  #
+  # ESTA APAGADA. Mientras este `habilitado: false`:
+  #   - no se pide ningun token,
+  #   - la app arranca igual, con o sin Xubio,
+  #   - los desplegables se llenan con lo que hay en la base (hoy, la semilla).
+  #
+  # Para prenderla:
+  #
+  #   1. export XUBIO_CLIENT_ID=...
+  #      export XUBIO_CLIENT_SECRET=...
+  #   2. poner habilitado: true y la base-url de la API
+  #   3. revisar las tres rutas contra la documentacion de Xubio
+  #
+  # ── ADVERTENCIA SOBRE LAS RUTAS ───────────────────────────────────────────────
+  # Las tres rutas de abajo son un SUPUESTO, no algo verificado. Salieron de un
+  # ejemplo generico que decia "revisar en la documentacion la URL exacta", y no
+  # se pudo confirmar ninguna contra la API real porque no hay credenciales. La
+  # primera vez que se prenda esto hay que corregir las tres y el nombre de los
+  # campos de la respuesta (ver RespuestaItem, que acepta alias).
+  xubio:
+    habilitado: false
+
+    # Base de la API, sin barra final. Cambia segun el plan y el ambiente.
+    base-url: ${XUBIO_BASE_URL:}
+
+    # Las credenciales NO van aca, y el default vacio es a proposito. Si el valor
+    # por defecto fuera el secreto, el `git push` lo sube a GitHub y despues hay
+    # que revocarlo. Con default vacio, el error es "faltan credenciales", que es
+    # arreglable, y no "el repo esta filtrado", que no lo es.
+    client-id: ${XUBIO_CLIENT_ID:}
+    client-secret: ${XUBIO_CLIENT_SECRET:}
+
+    ruta-token: /auth/token
+    ruta-cuentas-bancarias: /cuentas-bancarias
+    ruta-cuentas-contables: /cuentas-contables
+    ruta-circuitos: /circuitos
+
+    # Si Xubio no contesta en este tiempo, se corta y se avisa. Sin esto la
+    # pantalla de conciliacion se queda esperando para siempre y el usuario no
+    # puede distinguir eso de un problema de red propio.
+    timeout: 10s
+
+    # Se renueva el token este tiempo antes de que expire, para que no venza
+    # entre el chequeo y el uso.
+    margen-renovacion: 1m
