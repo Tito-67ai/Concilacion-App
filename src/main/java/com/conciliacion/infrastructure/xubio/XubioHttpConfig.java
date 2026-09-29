@@ -41,12 +41,26 @@ public class XubioHttpConfig {
                 .withConnectTimeout(props.getTimeout())
                 .withReadTimeout(props.getTimeout());
 
-        return RestClient.builder()
-                // El baseUrl NO se fija aca a proposito. El snippet lo tiene escrito
-                // ("https://xubio.com/API/1.1") y es un supuesto: la URL real
-                // depende del plan y del ambiente. Va en configuracion, y si se
-                // cambia no hay que recompilar.
-                .requestFactory(ClientHttpRequestFactories.get(settings))
-                .build();
+        RestClient.Builder builder = RestClient.builder()
+                .requestFactory(ClientHttpRequestFactories.get(settings));
+
+        // El baseUrl va en configuracion, no escrito aca: la URL real depende del
+        // plan y del ambiente, y si se cambia no tiene que haber recompilado.
+        //
+        // Solo se fija si hay algo. Con Xubio apagado (el estado por defecto) el
+        // base-url esta vacio, y el bean se arma igual en el arranque: si
+        // `baseUrl("")` se dejara pasar, la app no levantaria con la fuente
+        // apagada, que es justamente cuando NO se usa.
+        //
+        // Y esto NO es un detalle: sin baseUrl, `uri("/TokenEndpoint")` revienta
+        // con "URI is not absolute" en la PRIMERA llamada, no al arrancar. Estuvo
+        // asi desde que se escribio, y no se vio porque sin credenciales el
+        // cliente cortaba antes, con un mensaje claro. Con credenciales de prueba
+        // el fallo aparece y parece de Xubio, cuando es de aca.
+        if (props.getBaseUrl() != null && !props.getBaseUrl().isBlank()) {
+            builder.baseUrl(props.getBaseUrl());
+        }
+
+        return builder.build();
     }
 }

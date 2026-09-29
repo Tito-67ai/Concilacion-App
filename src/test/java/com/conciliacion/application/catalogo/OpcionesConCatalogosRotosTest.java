@@ -83,7 +83,7 @@ class OpcionesConCatalogosRotosTest {
     @Test
     @DisplayName("Con la fuente caida, NO se sirven las cuentas de la base")
     void conProblemaNoSirveLaBase() {
-        estado.marcarFallo("Xubio no respondio a tiempo (10 s).");
+        estado.marcarFallo("Xubio no respondio a tiempo (10 s).", true);
 
         CatalogoNoDisponibleException e = assertThrows(CatalogoNoDisponibleException.class,
                 () -> service.opciones());
@@ -94,9 +94,26 @@ class OpcionesConCatalogosRotosTest {
     }
 
     @Test
+    @DisplayName("Un timeout se puede reintentar; unas credenciales malas, no")
+    void elFlagDeReintentarVieneDelCliente() {
+        estado.marcarFallo("Xubio no respondio a tiempo (10 s).", true);
+        CatalogoNoDisponibleException timeout = assertThrows(CatalogoNoDisponibleException.class,
+                () -> service.opciones());
+        assertTrue(timeout.esReintentable(), "un timeout se cae solo");
+
+        estado.marcarFallo("Xubio rechazo el pedido de token (400). invalid_client", false);
+        CatalogoNoDisponibleException credenciales = assertThrows(CatalogoNoDisponibleException.class,
+                () -> service.opciones());
+        // Este es el que importaba: antes el flag salia siempre en `true`, asi que un
+        // boton de "reintentar" con credenciales malas prometia algo que no pasa.
+        assertFalse(credenciales.esReintentable(),
+                "con credenciales malas, reintentar devuelve exactamente lo mismo");
+    }
+
+    @Test
     @DisplayName("Con la fuente caida, los repositorios ni se tocan")
     void conProblemaNoLeeLosRepos() {
-        estado.marcarFallo("faltan las credenciales");
+        estado.marcarFallo("faltan las credenciales", false);
 
         assertThrows(CatalogoNoDisponibleException.class, () -> service.opciones());
 
@@ -110,14 +127,14 @@ class OpcionesConCatalogosRotosTest {
     void elAvisoAcompanaAlEstado() {
         assertFalse(estado.hayProblema());
 
-        estado.marcarFallo("faltan las credenciales");
+        estado.marcarFallo("faltan las credenciales", false);
         assertTrue(estado.hayProblema());
         assertEquals("faltan las credenciales", estado.motivo());
 
         estado.marcarOk();
         assertFalse(estado.hayProblema(), "un sync bueno limpia el estado");
 
-        estado.marcarFallo("otro fallo");
+        estado.marcarFallo("otro fallo", true);
         estado.marcarNoAplicable();
         assertFalse(estado.hayProblema(),
                 "apagar la fuente limpia el aviso: ya no hay nada que avisar");

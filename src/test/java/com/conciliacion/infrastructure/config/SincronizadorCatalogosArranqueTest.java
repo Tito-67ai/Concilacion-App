@@ -6,7 +6,6 @@ import com.conciliacion.application.catalogo.EstadoCatalogos;
 import com.conciliacion.application.catalogo.ItemCatalogo;
 import com.conciliacion.application.catalogo.SincronizadorCatalogos;
 import com.conciliacion.infrastructure.persistence.CircuitoContableRepository;
-import com.conciliacion.infrastructure.persistence.CuentaBancariaRepository;
 import com.conciliacion.infrastructure.persistence.CuentaContableRepository;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
@@ -19,44 +18,30 @@ import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.mock;
-import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 /**
- * Que el arranque sincronice los catalogos y deje el estado como corresponde.
+ * Que el arranque de la sincronizacion este cableado y no solo compilando.
  *
- * ── POR QUE HACE FALTA UN ARCHIVO PROPIO PARA ESTO ─────────────────────────────
+ * ── POR QUE ESTE TEST EXISTE ──────────────────────────────────────────────────
  *
- * Porque aca pasaron dos bugs seguidos que ninguna otra pruebacia agarro, y los
- * dos eran graves:
+ * Porque aqui ya se pasaron dos bugs que ninguna otra prueba ve. Los dos en el
+ * mismo archivo, los dos por el mismo motivo: el runner se escribio, se compilo,
+ * y no hacia nada. Un `sincronizar()` que nunca se llama deja el estado en "todo
+ * bien" porque no hay nada que falle, y la app muestra las cuentas de la semilla
+ * sin avisar que Xubio no dio una sola.
  *
- *  1. El runner pedia el estado (`sincronizado()`) pero nunca llamaba a
- *     `sincronizar()`. La app arrancaba, no sincronizaba nada, y marcaba el
- *     estado como "todo bien". Con Xubio prendido y andando, la pantalla no
- *     mostraba ninguna cuenta de Xubio y no habia ningun error visible.
- *  2. Con la fuente prendida y fallando, el estado quedaba limpio y
- *     `/filtros/opciones` servia las cuentas de la semilla con un 200.
+ * Un test que solo mira el codigo no lo encuentra. Uno que lo corre lo encuentra
+ * siempre, y mas barato.
  *
- * Los dos son fallos de ARRANQUE: son componentes que compilan, que se pueden
- * inyectar y que no se rompen. Un test de `SincronizadorCatalogos` dice
- * que sincroniza bien; uno de `ConciliacionService` dice que tira 503; ninguno de
- * los dos dice que esten conectados. Este es el test que dice eso.
- *
- * ── QUE CASOS CUBRE ───────────────────────────────────────────────────────────
- *
- *  1. Fuente apagada: no se sincroniza y el estado queda limpio. La pantalla tiene
- *     que andar normal, sin avisos.
- *  2. Fuente prendida y que anda: se sincroniza UNA vez y el estado queda limpio.
- *  3. Fuente prendida y que falla: el estado queda con el motivo, para que la
- *     pantalla lo muestre en vez de servir cuentas de la semilla.
- *  4. Un fallo propio (no de la API) tambien deja el estado marcado, no se pierde
- *     en el log.
+ * Los dos catalogos que se guardan son dos, no tres: las cuentas bancarias no
+ * entran por aca (Xubio no las expone). Si este test espera tres, esta probando
+ * una version vieja.
  */
 class SincronizadorCatalogosArranqueTest {
 
-    private final CuentaBancariaRepository bancos = mock(CuentaBancariaRepository.class);
     private final CuentaContableRepository contables = mock(CuentaContableRepository.class);
     private final CircuitoContableRepository circuitos = mock(CircuitoContableRepository.class);
     private final List<String> guardados = new ArrayList<>();
@@ -74,9 +59,8 @@ class SincronizadorCatalogosArranqueTest {
                 throw new CatalogoNoDisponibleException(motivo, true);
             }
             return new Catalogos(
-                    List.of(new ItemCatalogo("x-1", "Cuenta", "cbu-1", "Galicia")),
-                    List.of(new ItemCatalogo("c-1", "Clientes", "1.1.01.001", null)),
-                    List.of(new ItemCatalogo("k-1", "Ventas", null, null)));
+                    List.of(new ItemCatalogo("c-1", "Clientes", "1.1.01.001")),
+                    List.of(new ItemCatalogo("k-1", "Ventas", "V")));
         }
 
         @Override
@@ -91,10 +75,6 @@ class SincronizadorCatalogosArranqueTest {
     }
 
     private SincronizadorCatalogosArranque armar(Fuente fuente, EstadoCatalogos estado) {
-        when(bancos.save(any())).thenAnswer(i -> {
-            guardados.add("banco");
-            return i.getArgument(0);
-        });
         when(contables.save(any())).thenAnswer(i -> {
             guardados.add("contable");
             return i.getArgument(0);
@@ -104,7 +84,7 @@ class SincronizadorCatalogosArranqueTest {
             return i.getArgument(0);
         });
         return new SincronizadorCatalogosArranque(
-                new SincronizadorCatalogos(fuente, bancos, contables, circuitos), estado);
+                new SincronizadorCatalogos(fuente, contables, circuitos), estado);
     }
 
     @Test
@@ -117,7 +97,7 @@ class SincronizadorCatalogosArranqueTest {
 
         assertTrue(guardados.isEmpty(), "no se inserta nada con la fuente apagada");
         assertFalse(estado.hayProblema(), "una fuente apagada es una decision, no un problema");
-        verify(bancos, never()).save(any());
+        verify(contables, times(0)).save(any());
     }
 
     @Test
@@ -129,9 +109,9 @@ class SincronizadorCatalogosArranqueTest {
 
         armar(fuente, estado).run();
 
-        // Las tres filas del catalogo. Si el runner no llamara a `sincronizar()`,
+        // Las dos filas del catalogo. Si el runner no llamara a `sincronizar()`,
         // esto seria vacio y la prueba no necesitaria ningun mock extra.
-        assertEquals(List.of("banco", "contable", "circuito"), guardados);
+        assertEquals(List.of("contable", "circuito"), guardados);
         assertFalse(estado.hayProblema());
     }
 
@@ -155,7 +135,7 @@ class SincronizadorCatalogosArranqueTest {
     @Test
     @DisplayName("Un fallo propio tambien deja el estado marcado, no se pierde en el log")
     void falloPropioTambienSeMarca() {
-        // Un UNIQUE de CBU repetido, por ejemplo: no es una excepcion de catalogo,
+        // Un UNIQUE de codigo repetido, por ejemplo: no es una excepcion de catalogo,
         // es un fallo nuestro. Si este camino no marcara el estado, la pantalla
         // serviria las cuentas de la semilla pensando que todo esta bien.
         Fuente fuente = new Fuente() {
@@ -181,8 +161,7 @@ class SincronizadorCatalogosArranqueTest {
 
         armar(fuente, new EstadoCatalogos()).run();
 
-        // Tres guardados, uno por catalogo, y NO tres vueltas de los tres.
-        verify(bancos, times(1)).save(any());
+        // Un guardado por catalogo, y NO dos vueltas de los dos.
         verify(contables, times(1)).save(any());
         verify(circuitos, times(1)).save(any());
     }

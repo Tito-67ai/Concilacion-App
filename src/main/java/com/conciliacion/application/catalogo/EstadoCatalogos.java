@@ -59,6 +59,21 @@ public class EstadoCatalogos {
     private volatile String motivo;
 
     /**
+     * Si el fallo que se guardo se puede resolver reintentando.
+     *
+     * Se guarda CON el motivo y no se calcula al responder, porque la unica fuente
+     * de la verdad es la excepcion que lanzo el cliente, y esa ya se perdio.
+     * Hardcodear `true` al responder, que es lo que se hacia antes, deja el campo
+     * mintiendo siempre: un `invalid_client` de Xubio (credenciales malas) salia
+     * con `reintentable: true`, y un boton de "reintentar" que no va a funcionar
+     * nunca es peor que no tenerlo.
+     *
+     * `volatile` por lo mismo que `motivo`: lo escribe el hilo de arranque y lo
+     * leen los de pedido.
+     */
+    private volatile boolean reintentable;
+
+    /**
      * Si hay un problema para mostrar.
      *
      * Se devuelve `true` UNICAMENTE cuando la fuente esta prendida y no se pudo
@@ -74,8 +89,20 @@ public class EstadoCatalogos {
         return motivo;
     }
 
-    public void marcarFallo(String causa) {
+    /**
+     * Si el fallo guardado se arregla solo o hay que hacer algo.
+     *
+     * Es lo que el cliente ya decidio al traducir el error: un 5xx o un timeout se
+     * cae solo y vale la pena reintentar; unas credenciales que Xubio rechaza, o un
+     * base-url que falta, no.
+     */
+    public boolean reintentable() {
+        return reintentable;
+    }
+
+    public void marcarFallo(String causa, boolean reintentable) {
         this.motivo = causa;
+        this.reintentable = reintentable;
         log.warn("Estado de los catalogos: problema. {}", causa);
     }
 

@@ -32,7 +32,7 @@ import java.util.function.Function;
  * Se siembran CUENTAS y CIRCUITOS porque sin ellos los desplegables de filtro estan
  * vacios y no hay forma de elegir nada: la app queda inservible, no "vacia".
  *
- * Se siembran MOVIMIENTOS PENDIENTES porque unMatching necesita dos filas en la
+ * Se siembran MOVIMIENTOS PENDIENTES porque un Matching necesita dos filas en la
  * pantalla para que se vea de que se trata. No van conciliados: la pantalla arranca
  * con trabajo por hacer, que es el estado real de una empresa un dia 1.
  *
@@ -52,18 +52,40 @@ import java.util.function.Function;
  * datos de una fuente, son filas de arranque. Fingir que vienen de un extractor
  * obliga a mantener un extractor falso que solo existe para esta clase.
  *
- * ── DE DONDE SACAN LAS CUENTAS ────────────────────────────────────────────────
+ * ── DE DONDE SACAN LAS CUENTAS, Y POR QUE NO ES IGUAL PARA TODAS ─────────────
  *
- * Antes esta clase se sembraba sola y creaba sus propias cuentas bancarias
- * (Galicia, Nacion) y contables. Con la sincronizacion contra Xubio eso daria un
- * problema visible: el desplegable de "Cuenta bancaria" mostraria cuatro cuentas,
- * dos de ellas de la empresa y dos inventadas aqui, y el usuario no tendria forma
- * de saber cuales son reales.
+ * Las CUENTAS BANCARIAS se siembran SIEMPRE, con o sin Xubio prendido.
  *
- * Asi que si ya hay cuentas (porque la sincronizacion de Xubio corrio antes, que es
- * lo que hace el @Order(0) de SincronizadorCatalogosArranque), la semilla se
- * cuelga de esas y NO crea ninguna. Solo crea las suyas si la base esta realmente
- * vacia, que es el caso de una maquina sin Xubio prendido.
+ * Antes eran cosa de Xubio y esta clase se colgaba de lo que hubiera sin sembrar
+ * nada. Hoy no: la API de Xubio no expone las cuentas bancarias de la empresa. Se
+ * recorrio la spec entera y el unico recurso con "banco" en el nombre es
+ * `GET /banco`, que devuelve el catalogo de entidades bancarias (Nacion, Galicia,
+ * Santander), no las cuentas de la empresa, y sin CBU ni numero de cuenta.
+ *
+ * El CBU es el campo contra el que se concilia, asi que una cuenta bancaria sin CBU
+ * no sirve para nada, y rellenar el desplegable con `/banco` seria mostrar bancos
+ * como si fueran cuentas. Quedan como dato local, y por eso se siembran siempre:
+ * son las unicas cuentas que quedan, sin el filtro de cuentas bancarias no hay
+ * forma de importar un extracto, y las de abajo son cuentas de demostracion con
+ * CBU de mentira, no datos de la empresa.
+ *
+ * Las CUENTAS CONTABLES y los CIRCUITOS vienen de Xubio si esta prendido, y en ese
+ * caso NO se siembran. Meterle las de la semilla adelante seria mostrar cuatro
+ * cuentas donde la empresa tiene las que tiene, dos de ellas inventadas, y el
+ * usuario no tendria forma de saber cuales son reales: elegir la equivocada no da
+ * ningun error, para el sistema es una cuenta de verdad.
+ *
+ * ── POR QUE CON XUBIO PRENDIDO TAMPOCO SE SIEMBRAN MOVIMIENTOS ───────────────
+ *
+ * Porque un movimiento de arranque colgado de una cuenta real de Xubio seria una
+ * afirmacion falsa. El movimiento contable de la semilla viene con
+ * `OrigenMovimiento.XUBIO_API`: dice "esto vino de la API", y si la API prendida y
+ * funcional no lo produjo, es mentira. Y los bancarios, que dicen "SEM-0001", se
+ * verian al lado de cuentas reales y parecerian datos de la empresa.
+ *
+ * Prendido y funcionando, la pantalla arranca con los desplegables llenos de
+ * verdad y sin movimientos, que es el estado real de un sistema recien conectado.
+ * El usuario importa su primer extracto y concilia.
  */
 @Component
 @Order(100)
@@ -98,26 +120,28 @@ public class DataSeeder implements CommandLineRunner {
             return;
         }
 
-        // ── Si hay una fuente de catalogos prendida, NO se siembra nada ──────────
+        // --- Las bancarias: siempre nuestras, nunca de Xubio --------------------
+        List<CuentaBancaria> bancos = cuentaBancariaRepo.findAllByOrderByNombreAsc();
+        List<CuentaBancaria> bancosListo = completar(bancos, List.of(
+                new CuentaBancaria("Cuenta Corriente", "Banco Galicia", "0000003100000003079083"),
+                new CuentaBancaria("Caja de Ahorro", "Banco Nacion", "0110000430000043210987")),
+                cuentaBancariaRepo::saveAndFlush);
+
+        // ── Si hay una fuente de catalogos prendida, se corta aca ───────────────
         //
-        // Es lo mas importante de esta clase. Con Xubio prendido, las cuentas van
-        // a venir de ahi, y meterle las de la semilla adelante seria crear cuatro
-        // cuentas donde la empresa tiene dos, dos de ellas inventadas. El
-        // usuario no tendria forma de saber cuales son reales, y elegir la
-        // equivocada no da ningun error: es una cuenta de verdad para el sistema.
-        //
-        // Y los movimientos tampoco se siembran: cuelgan de esas cuentas por clave
-        // foranea, y sin cuentas no hay donde colgarlos. Un extractor de arranque
-        // que no tiene donde colgar sus filas no tiene sentido.
-        //
-        // Con esto, Xubio prendido y roto deja la pantalla con los desplegables
-        // vacios y un 503 que dice por que. Con Xubio apagado, la pantalla tiene
-        // la semilla y funciona, que es el caso de una maquina de desarrollo.
+        // Los contables y los circuitos ya vienen de ahi, y los movimientos de
+        // arranque no se siembran (por que esta escrito arriba). Con esto, Xubio
+        // prendido y roto deja la pantalla con un 503 que dice por que, y Xubio
+        // prendido y andando la deja con cuentas reales y sin datos inventados.
         if (sincronizador.sincronizado()) {
-            log.info("== CARGA INICIAL OMITIDA ==");
-            log.info("  Hay una fuente de catalogos prendida, asi que las cuentas y los circuitos "
-                    + "vienen de ahi y no se siembran. Los movimientos de arranque tambien se "
-                    + "omiten porque cuelgan de esas cuentas.");
+            log.info("== CARGA INICIAL PARCIAL ==");
+            log.info("  cuentas bancarias: {} (locales, de demostracion: Xubio no expone "
+                    + "las cuentas bancarias de la empresa, y hacen falta para importar).",
+                    bancosListo.size());
+            log.info("  cuentas contables: {} | circuitos: {}. Vienen de la fuente de "
+                    + "catalogos, no se siembran.", cuentaContableRepo.count(), circuitoRepo.count());
+            log.info("  movimientos: NO se siembran. Un movimiento de arranque colgado de una "
+                    + "cuenta real seria una afirmacion falsa. Importa el primer extracto.");
             return;
         }
 
@@ -132,16 +156,10 @@ public class DataSeeder implements CommandLineRunner {
         // el segundo grupo de movimientos va a `cuentaBancaria2`, o a la misma si
         // solo hay una, porque un movimiento necesita una cuenta y no vale la
         // pena inventar una segunda para una sola fila.
-        List<CuentaBancaria> bancos = cuentaBancariaRepo.findAllByOrderByNombreAsc();
         List<CuentaContable> contables = cuentaContableRepo.findAllByOrderByCodigoAsc();
         List<CircuitoContable> circuitos = circuitoRepo.findAllByOrderByNombreAsc();
 
-        List<CuentaBancaria> bancosListo =completar(bancos, List.of(
-                new CuentaBancaria("Cuenta Corriente", "Banco Galicia", "0000003100000003079083"),
-                new CuentaBancaria("Caja de Ahorro", "Banco Nacion", "0110000430000043210987")),
-                cuentaBancariaRepo::saveAndFlush);
-
-        List<CuentaContable> contablesListo =completar(contables, List.of(
+        List<CuentaContable> contablesListo = completar(contables, List.of(
                 new CuentaContable("1.1.01.001", "Clientes - Ventas"),
                 new CuentaContable("2.1.01.004", "Proveedores - Compras")),
                 cuentaContableRepo::saveAndFlush);

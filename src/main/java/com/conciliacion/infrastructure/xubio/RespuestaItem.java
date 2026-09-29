@@ -6,37 +6,49 @@ import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
 /**
  * Una fila de catalogo tal como la manda Xubio.
  *
- * ── EL MAPEO ES UN SUPUESTO, Y HAY QUE DECIRLO ────────────────────────────────
+ * ── LOS NOMBRES DE CAMPO VIENEN DE LA SPEC, NO DE UN EJEMPLO ──────────────────
  *
- * El codigo que motiva esto define el DTO con `id` y `nombre`, y nada mas. Con eso
- * no se puede armar una `CuentaBancaria` nuestra, que ademas de nombre necesita
- * banco y CBU, ni una `CuentaContable`, que necesita codigo.
+ * Este record se escribio primero contra un fragmento de codigo generico que solo
+ * definia `id` y `nombre`. Los nombres de campo de hoy salen de leer las
+ * definiciones de la spec de Xubio:
  *
- * Asi que este record acepta los tres nombres que se usaron como alias, y el
- * mapeo a nuestras entidades esta en `SincronizadorCatalogos`. Todo eso es un
- * SUPUESTO tomado del snippet, no de una respuesta real de Xubio. Cuando se
- * tenga el client-id y se pueda llamar a la API, esto se corrige contra lo que
- * conteste de verdad: si el CBU viene en `cbu` y no en `codigo`, el alias se
- * corre de lugar.
+ *   CuentaContableBean     { ID, nombre, codigo, id }
+ *   CircuitoContableBean   { circuitoContable_id, codigo, nombre }
  *
- * Por eso el record no falla si un campo no esta: `null` es un valor legitimo
- * aqui, y el sincronizador tiene reglas documentadas para cada falta.
+ * De ahi salen las dos rarezas que hacen que este record tenga alias:
+ *
+ *  1. `ID` y `id` conviven en el mismo bean. Es raro y parece un descuido de Xubio,
+ *     pero esta escrito asi, asi que se aceptan los dos: si se aceptara solo uno y
+ *     Xubio mandara el otro, todas las filas vendrian sin id, el sincronizador las
+ *     descartaria y el catalogo apareceria vacio sin decir por que.
+ *
+ *  2. Los circuitos NO tienen `id`: el suyo se llama `circuitoContable_id`. Sin ese
+ *     alias, ningun circuito seria sincronizable.
+ *
+ * ── POR QUE EL ID ES LO UNICO IMPORTANTE ──────────────────────────────────────
+ *
+ * Porque es lo que permite deduplicar contra lo que ya esta en la base. Un id
+ * ausente o repetido no es un dato feo, es una fila que no se puede guardar sin
+ * riesgo de duplicar el catalogo entero en cada arranque. Por eso el record no
+ * falla si un campo no esta: `null` es un valor legitimo aca, y el sincronizador
+ * tiene reglas documentadas para cada falta.
  */
 @JsonIgnoreProperties(ignoreUnknown = true)
 public class RespuestaItem {
 
+    /**
+     * `ID` en cuentas contables, `circuitoContable_id` en circuitos. Se aceptan los
+     * tres nombres porque los tres aparecen en la API real.
+     */
+    @JsonAlias({"ID", "circuitoContable_id", "circuitoContableId"})
     private String id;
 
     @JsonAlias({"name", "descripcion", "label"})
     private String nombre;
 
-    /** Codigo de la cuenta contable; CBU de la bancaria. */
-    @JsonAlias({"code", "codigoContable", "cbu"})
+    /** Codigo de la cuenta contable. Los circuitos tambien lo traen. */
+    @JsonAlias({"code", "codigoContable"})
     private String codigo;
-
-    /** Banco. */
-    @JsonAlias({"bank", "bancoNombre", "entidad"})
-    private String grupo;
 
     public String getId() { return id; }
     public void setId(String id) { this.id = id; }
@@ -46,7 +58,4 @@ public class RespuestaItem {
 
     public String getCodigo() { return codigo; }
     public void setCodigo(String codigo) { this.codigo = codigo; }
-
-    public String getGrupo() { return grupo; }
-    public void setGrupo(String grupo) { this.grupo = grupo; }
 }

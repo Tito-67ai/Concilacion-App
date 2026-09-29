@@ -5,16 +5,22 @@ import com.conciliacion.application.catalogo.Catalogos;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
+import org.springframework.http.HttpMethod;
+import org.springframework.http.HttpStatus;
 import org.springframework.http.MediaType;
 import org.springframework.test.web.client.MockRestServiceServer;
 import org.springframework.web.client.RestClient;
 
-import java.util.List;
+import java.nio.charset.StandardCharsets;
+import java.util.Base64;
 
+import static org.hamcrest.Matchers.containsString;
+import static org.hamcrest.Matchers.not;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
+import static org.springframework.test.web.client.match.MockRestRequestMatchers.content;
 import static org.springframework.test.web.client.match.MockRestRequestMatchers.header;
 import static org.springframework.test.web.client.match.MockRestRequestMatchers.method;
 import static org.springframework.test.web.client.match.MockRestRequestMatchers.requestTo;
@@ -24,37 +30,38 @@ import static org.springframework.test.web.client.response.MockRestResponseCreat
 /**
  * Que el cliente de Xubio hable bien y, sobre todo, que falle bien.
  *
- * ── POR QUE ESTE TEST NO PUEDE SABER SI LOS ENDPOINTS EXISTEN ──────────────────
- *
- * Porque no hay credenciales. Las rutas y los nombres de campo que se prueban
- * salen del ejemplo generico que motivo todo esto, y ese mismo ejemplo decia
- * "revisar en la documentacion la URL exacta". Este test verifica que el cliente
- * arma las peticiones y lee las respuestas de la forma que se eligio; no verifica
- * que `/cuentas-bancarias` sea la ruta correcta en Xubio, porque eso solo se
- * sabe preguntándole a Xubio.
- *
- * Lo que SI se puede probar sin credenciales, y es lo que importa, es que cada
- * forma de fallo llegue a la pantalla como un mensaje que dice que paso: eso no
- * depende de la API real.
- *
  * ── QUE CASOS CUBRE Y POR QUE CADA UNO ─────────────────────────────────────────
  *
- *  1. Pide el token, lo usa en las tres llamadas y lo manda como Bearer.
- *  2. El token se reusa: la segunda lectura de catalogos no vuelve a pedirlo. Sin
- *     esto, cada carga de la pantalla seria un token de mas.
- *  3. Sin credenciales: el error dice que faltan, y NO reintentable. Un boton de
- *     "reintentar" con credenciales malas no hace nada util.
- *  4. 401 de Xubio: no reintentable, y el cuerpo del error de Xubio viaja en el
- *     mensaje, que es donde la API dice que esta mal.
- *  5. 500 de Xubio: reintentable, porque un 5xx del servidor se cae solo.
- *  6. 200 sin token: Xubio contesto bien y sin credenciales. Es el fallo mas
- *     comun de todos y el que menos se entiende si el mensaje no lo aclara.
- *  7. La fuente apagada devuelve vacio en vez de tirar excepcion: apagar Xubio
- *     es una decision, no un error.
+ *  1. El pedido del token sale EXACTO como lo documenta Xubio: a `/TokenEndpoint`,
+ *     en form-urlencoded, con `grant_type=client_credentials` en el cuerpo y las
+ *     credenciales por HTTP Basic. Esta prueba existe porque el codigo original
+ *     mandaba un JSON a `/auth/token`, que falla con `400 invalid_client`: un
+ *     error que dice "las credenciales estan mal" cuando estan perfectas y se
+ *     mandaron donde no era. Es el fallo mas caro de diagnosticar de todos.
+ *  2. Los nombres de campo de la spec: `ID` en cuentas, `circuitoContable_id` en
+ *     circuitos. Ninguno de los dos es `id`, y sin el alias correspondiente el
+ *     catalogo entero se descartaria por falta de id, en silencio.
+ *  3. `expires_in` viene como texto (`"3600"`), y se lee igual.
+ *  4. El token se usa como Bearer en los dos catalogos.
+ *  5. El token se reusa: la segunda lectura no vuelve a pedirlo.
+ *  6. Sin credenciales: el error dice que faltan, y NO reintentable.
+ *  7. Credenciales que Xubio rechaza: contesta 400 `invalid_client`, no 401, y el
+ *     cuerpo del error viaja en el mensaje.
+ *  8. 500: reintentable, porque un 5xx del servidor se cae solo.
+ *  9. 200 sin token: Xubio contesto bien y sin credenciales.
+ * 10. La fuente apagada devuelve vacio, no excepcion: apagar Xubio es una
+ *     decision, no un error.
+ * 11. Prendida y sin credenciales: sigue prendida Y tira error.
+ * 12. Un catalogo vacio es "sin datos", no un error.
  */
 class XubioClienteTest {
 
     private static final String BASE = "https://api.ejemplo.test";
+
+    /** Lo que dice la documentacion de Xubio para pedir un token. */
+    private static final String BASIC =
+            "Basic " + Base64.getEncoder().encodeToString(
+                    "un-client:un-secreto".getBytes(StandardCharsets.UTF_8));
 
     private MockRestServiceServer servidor;
     private XubioProperties props;
@@ -64,7 +71,7 @@ class XubioClienteTest {
     void armar() {
         props = new XubioProperties();
         props.setHabilitado(true);
-        props.setBaseUrl("https://api.ejemplo.test");
+        props.setBaseUrl(BASE);
         props.setClientId("un-client");
         props.setClientSecret("un-secreto");
 
@@ -73,34 +80,67 @@ class XubioClienteTest {
         cliente = new XubioCliente(props, builder.build());
     }
 
+    /**
+     * Un token de verdad, con `expires_in` como texto, que es como lo manda Xubio.
+     *
+     * <p>Las aserciones del pedido van ACA y no en un test suelto, para que las
+     * paguen todos los tests que piden token. Si el protocolo del token se rompe,
+     * que fallen todos juntos: un test que lo verifica y nueve que lo dan por
+     * hecho no dicen nada cuando el primero queda viejo.
+     */
     private void tokenOk() {
-        servidor.expect(requestTo(BASE + "/auth/token"))
-                .andExpect(method(org.springframework.http.HttpMethod.POST))
-                .andRespond(withSuccess("{\"access_token\":\"tok-123\",\"expires_in\":3600}",
+        servidor.expect(requestTo(BASE + "/TokenEndpoint"))
+                .andExpect(method(HttpMethod.POST))
+                // Esto es lo que rompio la integracion: mandando un JSON a
+                // `/auth/token`, Xubio contesta "invalid_client" y el mensaje dice
+                // que las credenciales estan mal. Cada linea aca es una forma
+                // distinta de mandar el mismo pedido equivocado.
+                .andExpect(header("Authorization", BASIC))
+                .andExpect(content().contentTypeCompatibleWith(MediaType.APPLICATION_FORM_URLENCODED))
+                .andExpect(content().string(containsString("grant_type=client_credentials")))
+                .andExpect(content().string(not(containsString("un-secreto"))))
+                .andRespond(withSuccess("{\"scope\":\"\",\"expires_in\":\"3600\","
+                        + "\"token_type\":\"Bearer\",\"access_token\":\"tok-123\"}",
                         MediaType.APPLICATION_JSON));
     }
 
     @Test
-    @DisplayName("Pide el token una vez y lo manda como Bearer en los tres catalogos")
-    void pideTokenYLoUsa() {
+    @DisplayName("El token se pide como lo documenta Xubio y sin las credenciales en el cuerpo")
+    void pideElTokenComoLoDocumenta() {
         tokenOk();
-        servidor.expect(requestTo(BASE + "/cuentas-bancarias"))
+        servidor.expect(requestTo(BASE + "/cuenta")).andRespond(withSuccess("[]", MediaType.APPLICATION_JSON));
+        servidor.expect(requestTo(BASE + "/circuitoContableBean")).andRespond(withSuccess("[]", MediaType.APPLICATION_JSON));
+
+        cliente.consultar();
+
+        servidor.verify();
+        // El `tokenOk()` de arriba es el que verifica el pedido; este test existe
+        // para que el caso tenga nombre y quede escrito que se esta probando, no
+        // solo de paso.
+    }
+
+    @Test
+    @DisplayName("Lee los nombres de campo de la spec y los usa como Bearer")
+    void leeLosCamposDeLaSpec() {
+        tokenOk();
+        servidor.expect(requestTo(BASE + "/cuenta"))
                 .andExpect(header("Authorization", "Bearer tok-123"))
-                .andRespond(withSuccess("[{\"id\":\"x-1\",\"nombre\":\"Cuenta\",\"codigo\":\"cbu-1\","
-                        + "\"grupo\":\"Galicia\"}]", MediaType.APPLICATION_JSON));
-        servidor.expect(requestTo(BASE + "/cuentas-contables"))
+                .andRespond(withSuccess("[{\"ID\":111,\"nombre\":\"Clientes\","
+                        + "\"codigo\":\"1.1.01.001\",\"id\":111}]", MediaType.APPLICATION_JSON));
+        servidor.expect(requestTo(BASE + "/circuitoContableBean"))
                 .andExpect(header("Authorization", "Bearer tok-123"))
-                .andRespond(withSuccess("[{\"id\":\"c-1\",\"nombre\":\"Clientes\","
-                        + "\"codigo\":\"1.1.01.001\"}]", MediaType.APPLICATION_JSON));
-        servidor.expect(requestTo(BASE + "/circuitos"))
-                .andExpect(header("Authorization", "Bearer tok-123"))
-                .andRespond(withSuccess("[{\"id\":\"k-1\",\"nombre\":\"Ventas\"}]", MediaType.APPLICATION_JSON));
+                .andRespond(withSuccess("[{\"circuitoContable_id\":222,\"nombre\":\"Ventas\","
+                        + "\"codigo\":\"V\"}]", MediaType.APPLICATION_JSON));
 
         Catalogos c = cliente.consultar();
 
-        assertEquals(1, c.cuentasBancarias().size());
-        assertEquals("Galicia", c.cuentasBancarias().get(0).grupo());
+        assertEquals(1, c.cuentasContables().size());
+        assertEquals("111", c.cuentasContables().get(0).id());
+        assertEquals("Clientes", c.cuentasContables().get(0).nombre());
         assertEquals("1.1.01.001", c.cuentasContables().get(0).codigo());
+        // El circuito no tiene `id`: el suyo se llama `circuitoContable_id`. Sin
+        // ese alias, cero circuitos se sincronizan y no dice ni una palabra.
+        assertEquals("222", c.circuitos().get(0).id());
         assertEquals("Ventas", c.circuitos().get(0).nombre());
         servidor.verify();
     }
@@ -110,11 +150,9 @@ class XubioClienteTest {
     void reusaElToken() {
         tokenOk();
         for (int i = 0; i < 2; i++) {
-            servidor.expect(requestTo(BASE + "/cuentas-bancarias"))
+            servidor.expect(requestTo(BASE + "/cuenta"))
                     .andRespond(withSuccess("[]", MediaType.APPLICATION_JSON));
-            servidor.expect(requestTo(BASE + "/cuentas-contables"))
-                    .andRespond(withSuccess("[]", MediaType.APPLICATION_JSON));
-            servidor.expect(requestTo(BASE + "/circuitos"))
+            servidor.expect(requestTo(BASE + "/circuitoContableBean"))
                     .andRespond(withSuccess("[]", MediaType.APPLICATION_JSON));
         }
 
@@ -122,7 +160,7 @@ class XubioClienteTest {
         cliente.consultar();
 
         servidor.verify();
-        // Si el token se hubiera pedido dos veces, el `expect` de /auth/token
+        // Si el token se hubiera pedido dos veces, el `expect` de /TokenEndpoint
         // (que se registra una sola vez) fallaria por llamada de mas.
     }
 
@@ -139,27 +177,29 @@ class XubioClienteTest {
     }
 
     @Test
-    @DisplayName("Un 401 de Xubio no se reintenta y trae el detalle que mando la API")
-    void unauthorized() {
-        servidor.expect(requestTo(BASE + "/auth/token"))
-                .andRespond(withStatus(org.springframework.http.HttpStatus.UNAUTHORIZED)
-                        .body("{\"error\":\"client invalido\"}")
+    @DisplayName("Credenciales que Xubio rechaza: contesta 400, no 401, y no se reintenta")
+    void credencialesRechazadas() {
+        // Esta es la respuesta REAL de Xubio con un client-id falso. Si el cliente
+        // esperara 401, no lo reconoceria y el mensaje seria otra cosa.
+        servidor.expect(requestTo(BASE + "/TokenEndpoint"))
+                .andRespond(withStatus(HttpStatus.BAD_REQUEST)
+                        .body("{\"error_description\":\"Client authentication failed\","
+                                + "\"error\":\"invalid_client\"}")
                         .contentType(MediaType.APPLICATION_JSON));
 
         CatalogoNoDisponibleException e =
                 assertThrows(CatalogoNoDisponibleException.class, () -> cliente.consultar());
 
-        assertFalse(e.esReintentable());
-        assertTrue(e.getMessage().contains("401"));
-        assertTrue(e.getMessage().contains("client invalido"),
-                "el cuerpo de la API es donde dice que esta mal, tiene que viajar: " + e.getMessage());
+        assertFalse(e.esReintentable(), "con las mismas credenciales devuelve lo mismo");
+        assertTrue(e.getMessage().contains("invalid_client"),
+                "el cuerpo es donde dice que esta mal, tiene que viajar: " + e.getMessage());
     }
 
     @Test
     @DisplayName("Un 500 de Xubio si se puede reintentar")
     void errorDelServidorEsReintentable() {
-        servidor.expect(requestTo(BASE + "/auth/token"))
-                .andRespond(withStatus(org.springframework.http.HttpStatus.INTERNAL_SERVER_ERROR));
+        servidor.expect(requestTo(BASE + "/TokenEndpoint"))
+                .andRespond(withStatus(HttpStatus.INTERNAL_SERVER_ERROR));
 
         CatalogoNoDisponibleException e =
                 assertThrows(CatalogoNoDisponibleException.class, () -> cliente.consultar());
@@ -170,7 +210,7 @@ class XubioClienteTest {
     @Test
     @DisplayName("Un 200 sin token apunta a las credenciales, que es el fallo mas comun")
     void respondeSinToken() {
-        servidor.expect(requestTo(BASE + "/auth/token"))
+        servidor.expect(requestTo(BASE + "/TokenEndpoint"))
                 .andRespond(withSuccess("{\"error\":\"credenciales incorrectas\"}", MediaType.APPLICATION_JSON));
 
         CatalogoNoDisponibleException e =
@@ -229,9 +269,10 @@ class XubioClienteTest {
     @DisplayName("Un catalogo vacio es 'sin datos', no un error")
     void catalogoVacio() {
         tokenOk();
-        for (String ruta : List.of("/cuentas-bancarias", "/cuentas-contables", "/circuitos")) {
-            servidor.expect(requestTo(BASE + ruta)).andRespond(withSuccess("[]", MediaType.APPLICATION_JSON));
-        }
+        servidor.expect(requestTo(BASE + "/cuenta"))
+                .andRespond(withSuccess("[]", MediaType.APPLICATION_JSON));
+        servidor.expect(requestTo(BASE + "/circuitoContableBean"))
+                .andRespond(withSuccess("[]", MediaType.APPLICATION_JSON));
 
         Catalogos c = cliente.consultar();
 

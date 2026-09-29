@@ -8,43 +8,63 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.http.HttpStatusCode;
 import org.springframework.stereotype.Component;
+import org.springframework.util.LinkedMultiValueMap;
+import org.springframework.util.MultiValueMap;
 import org.springframework.web.client.ResourceAccessException;
 import org.springframework.web.client.RestClient;
 import org.springframework.web.client.RestClientException;
 import org.springframework.web.client.RestClientResponseException;
 
+import java.nio.charset.StandardCharsets;
 import java.time.Instant;
 import java.util.Arrays;
+import java.util.Base64;
 import java.util.List;
 import java.util.concurrent.atomic.AtomicReference;
 
 /**
- * Habla con la API de Xubio: pide un token y despues los tres catalogos.
+ * Habla con la API de Xubio: pide un token y despues los dos catalogos.
  *
- * ── LO QUE ESTA PEOR QUE EN EL SNIPPET, Y POR QUE ─────────────────────────────
+ * ── EL PROTOCOLO DE TOKEN, QUE NO ES EL QUE SE SUPIA ─────────────────────────
  *
- *  1. `new RestTemplate()` sin timeouts. Si Xubio acepta la conexion y se cuelga,
- *     el GET queda esperando para siempre y con el la pantalla de conciliacion.
- *     Aca el cliente es un bean con timeout de conexion y de lectura, y el
- *     timeout se traduce a un error que la pantalla puede mostrar.
+ * Xubio documenta el pedido asi:
  *
- *  2. `obtenerToken()` que devuelve "TOKEN_EXTRAIDO_DEL_JSON". Aca el token se
- *     deserializa de verdad, con tres nombres de campo aceptados, y se cachea
- *     hasta un margen antes de que expire.
+ *   curl -X POST https://xubio.com/API/1.1/TokenEndpoint \
+ *        -H "Content-Type: application/x-www-form-urlencoded" \
+ *        -d 'grant_type=client_credentials' \
+ *        --user TU_CLIENT_ID:TU_SECRET_ID
  *
- *  3. `BASE_URL` constante "https://xubio.com/API/1.1". Aca es configuracion, y
- *     las tres rutas tambien, porque el propio snippet dice que hay que
- *     confirmarlas en la documentacion.
+ * Tres cosas de ahi que hay que cumplir exactamente:
+ *
+ *  1. La ruta es `/TokenEndpoint`, no `/auth/token` ni `/token`.
+ *  2. El cuerpo NO lleva las credenciales: lleva `grant_type=client_credentials`.
+ *     Las credenciales van por HTTP Basic, en la cabecera `Authorization`.
+ *  3. El cuerpo va como `application/x-www-form-urlencoded`, no como JSON.
+ *
+ * Mandar un JSON con `clientId`/`clientSecret` no falla de forma ruidosa: Xubio
+ * contesta `400 invalid_client`, que se lee como "las credenciales estan mal"
+ * cuando en realidad estan bien y se mandaron donde no era.
+ *
+ * ── QUE CONTESTA CUANDO EL TOKEN NO ES ────────────────────────────────────────
+ *
+ * Un 401 sin token, o con token vencido, responde:
+ *
+ *   {"status": "error","message": "UNAUTHORIZED_ACCESS"}
+ *
+ * y un 400 por credenciales invalidas responde:
+ *
+ *   {"error_description":"Client authentication failed","error":"invalid_client"}
+ *
+ * Son dos formas distintas y se traducen distinto: el 400 no se reintenta nunca
+ * (con las mismas credenciales devuelve lo mismo), y el 401 de un catalogo si, una
+ * sola vez, porque lo mas probable es un token que vencio entre el chequeo y el uso.
  *
  * ── POR QUE EL TOKEN SE CACHEA ────────────────────────────────────────────────
  *
- * Pedir un token por cada lectura de catalogo es una llamada de mas por request
- * y una vida extra por token. El filtro se pide una vez al entrar, pero si
- * aparece un "refrescar catalogos" manual, el token ya esta y no se vuelve a
- * pedir. La cache se invalida sola por tiempo, y tambien cuando Xubio contesta
- * 401: se borra y se reintenta UNA vez, porque un 401 en la primera lectura casi
- * siempre es un token que vencio entre el chequeo y el uso, no credenciales
- * malas. Un 401 en el segundo intento ya es de verdad un 401 de credenciales.
+ * Pedir un token por cada lectura de catalogo es una llamada de mas por request y
+ * una vida extra por token. Xubio lo da por una hora (`expires_in: "3600"`), asi
+ * que la cache se invalida sola por tiempo, con un margen antes de la expiracion,
+ * y tambien cuando Xubio contesta 401.
  */
 @Component
 public class XubioCliente implements CatalogoXubio {
@@ -95,7 +115,7 @@ public class XubioCliente implements CatalogoXubio {
         if (!props.isHabilitado()) {
             // No es un error: la fuente esta apagada a proposito. Se devuelve un
             // catalogo vacio y el filtro se arma con lo que haya en la base.
-            return new Catalogos(List.of(), List.of(), List.of());
+            return new Catalogos(List.of(), List.of());
         }
         if (!props.tieneCredenciales()) {
             throw new CatalogoNoDisponibleException(
@@ -110,24 +130,23 @@ public class XubioCliente implements CatalogoXubio {
 
         String autorizacion = tokenValido();
         try {
-            return new Catalogos(
-                    leer(props.getRutaCuentasBancarias(), autorizacion, "cuentas bancarias"),
-                    leer(props.getRutaCuentasContables(), autorizacion, "cuentas contables"),
-                    leer(props.getRutaCircuitos(), autorizacion, "circuitos"));
+            return dosCatalogos(autorizacion);
         } catch (CatalogoNoDisponibleException e) {
             // Un 401 con token en vigor: lo mas probable es que vencio entre el
             // chequeo y el uso. Se borra la cache y se reintenta una sola vez.
             if (e.getMessage() != null && e.getMessage().contains("401") && token.get() != null) {
                 log.warn("Xubio devolvio 401 con un token en cache; se renueva y se reintenta una vez.");
                 token.set(null);
-                String nuevo = tokenValido();
-                return new Catalogos(
-                        leer(props.getRutaCuentasBancarias(), nuevo, "cuentas bancarias"),
-                        leer(props.getRutaCuentasContables(), nuevo, "cuentas contables"),
-                        leer(props.getRutaCircuitos(), nuevo, "circuitos"));
+                return dosCatalogos(tokenValido());
             }
             throw e;
         }
+    }
+
+    private Catalogos dosCatalogos(String autorizacion) {
+        return new Catalogos(
+                leer(props.getRutaCuentasContables(), autorizacion, "cuentas contables"),
+                leer(props.getRutaCircuitos(), autorizacion, "circuitos"));
     }
 
     /** Devuelve el token, pidiendolo solo si no hay uno vigente. */
@@ -156,13 +175,15 @@ public class XubioCliente implements CatalogoXubio {
     }
 
     private String pedirToken() {
-        String cuerpo = "{\"clientId\":%s,\"clientSecret\":%s}".formatted(
-                json(props.getClientId()), json(props.getClientSecret()));
+        // El cuerpo lleva SOLO el grant_type. Las credenciales van por HTTP Basic.
+        MultiValueMap<String, String> cuerpo = new LinkedMultiValueMap<>();
+        cuerpo.add("grant_type", "client_credentials");
 
         RespuestaToken respuesta;
         try {
             respuesta = http.post()
                     .uri(props.getRutaToken())
+                    .header("Authorization", basic(props.getClientId(), props.getClientSecret()))
                     .body(cuerpo)
                     .retrieve()
                     .body(RespuestaToken.class);
@@ -183,24 +204,43 @@ public class XubioCliente implements CatalogoXubio {
                     "Xubio contesto sin token. Revisar el client-id y el client-secret.", false);
         }
 
-        // Si Xubio no dice cuando vence, se renueva a los 30 minutos. Es un supuesto
-        // marcado: con un token de vida corta, renovar antes de que caduque es
-        // inofensivo; con uno largo, se hacen llamadas de mas.
-        int segundos = respuesta.getExpiresIn() != null && respuesta.getExpiresIn() > 0
-                ? respuesta.getExpiresIn()
-                : 1800;
-        Instant vence = Instant.now().plusSeconds(segundos).minus(props.getMargenRenovacion());
+        // Xubio manda `expires_in` como texto ("3600"). Si no dice cuando vence, se
+        // renueva cada 30 minutos: es un supuesto marcado, y con un token de vida
+        // corta renovar antes de que caduque es inofensivo, con uno largo se hacen
+        // llamadas de mas.
+        Integer segundos = respuesta.segundosDeVida();
+        int vida = segundos != null && segundos > 0 ? segundos : 1800;
+        Instant vence = Instant.now().plusSeconds(vida).minus(props.getMargenRenovacion());
 
         token.set(new TokenVigente(respuesta.getAccessToken(),
-                respuesta.getTokenType() == null ? "Bearer" : respuesta.getTokenType(), vence));
-        log.info("Token de Xubio obtenido; se renueva en {} segundos.", Math.max(0, segundos));
+                respuesta.getTokenType(), vence));
+        log.info("Token de Xubio obtenido; se renueva en {} segundos.", Math.max(0, vida));
         return cabecera(respuesta.getAccessToken(), token.get().tipo());
     }
 
     /**
+     * HTTP Basic con client-id y client-secret.
+     *
+     * Base64 de "id:secreto". Es lo que dice la documentacion de Xubio y lo que
+     * hace `--user` de curl. Un secreto con dos puntos se parte mal a mano, por eso
+     * se hace con `lastIndexOf`: el id puede tenerlos y no son separadores.
+     */
+    private static String basic(String id, String secreto) {
+        StringBuilder credenciales = new StringBuilder(id);
+        int ultimo = secreto.lastIndexOf(':');
+        if (ultimo >= 0) {
+            credenciales.append(secreto.substring(ultimo));
+        } else {
+            credenciales.append(':').append(secreto);
+        }
+        return "Basic " + Base64.getEncoder()
+                .encodeToString(credenciales.toString().getBytes(StandardCharsets.UTF_8));
+    }
+
+    /**
      * Un catalogo. El nombre va en el mensaje de error porque "no se pudieron leer
-     * los catalogos" no dice cual de los tres fallo, y el usuario tiene tres
-     * llamadas distintas que puede estar viendo.
+     * los catalogos" no dice cual de los dos fallo, y el usuario tiene dos llamadas
+     * distintas que puede estar viendo.
      */
     private List<ItemCatalogo> leer(String ruta, String autorizacion, String nombre) {
         RespuestaItem[] crudos;
@@ -224,14 +264,20 @@ public class XubioCliente implements CatalogoXubio {
             return List.of();
         }
         return Arrays.stream(crudos)
-                .map(i -> new ItemCatalogo(i.getId(), i.getNombre(), i.getCodigo(), i.getGrupo()))
+                .map(i -> new ItemCatalogo(i.getId(), i.getNombre(), i.getCodigo()))
                 .toList();
     }
 
+    /**
+     * Un rechazo al pedir el token.
+     *
+     * Xubio contesta `400 invalid_client` cuando el client-id o el secret estan
+     * mal, no 401. No se reintenta nunca: con las mismas credenciales devuelve
+     * exactamente lo mismo, y un boton de "reintentar" que no puede funcionar es
+     * peor que no tenerlo.
+     */
     private CatalogoNoDisponibleException errorDeToken(RestClientResponseException e) {
         HttpStatusCode estado = e.getStatusCode();
-        // 400 y 401 no son reintentables: el body dice por que, y repetirlo con las
-        // mismas credenciales devuelve exactamente lo mismo.
         boolean reintentable = estado.is5xxServerError();
         return new CatalogoNoDisponibleException(
                 "Xubio rechazo el pedido de token (" + estado.value() + "). "
@@ -258,14 +304,17 @@ public class XubioCliente implements CatalogoXubio {
                 true, e);
     }
 
-    /** El cuerpo del error, que es donde la API dice que esta mal. */
+    /**
+     * El cuerpo del error, que es donde la API dice que esta mal.
+     *
+     * Se recorta a 300 caracteres: un error de proxy puede devolver una pagina
+     * HTML entera, y eso en un mensaje de la pantalla es ruido.
+     */
     private String cuerpoDeError(RestClientResponseException e) {
         String cuerpo = e.getResponseBodyAsString();
         if (cuerpo == null || cuerpo.isBlank()) {
             return "sin detalle.";
         }
-        // Se recortan los ultimos 300 caracteres: un error de proxy puede devolver
-        // una pagina HTML entera, y eso en un mensaje de la pantalla es ruido.
         String recortado = cuerpo.length() > 300 ? cuerpo.substring(0, 300) + "..." : cuerpo;
         return recortado.replaceAll("\\s+", " ").trim();
     }
@@ -273,13 +322,5 @@ public class XubioCliente implements CatalogoXubio {
     private static String causa(Throwable e) {
         String m = e.getMessage();
         return m == null ? e.getClass().getSimpleName() : m;
-    }
-
-    /** Comillas y escapes, para que un secreto con comillas no rompa el JSON. */
-    private static String json(String valor) {
-        if (valor == null) {
-            return "\"\"";
-        }
-        return "\"" + valor.replace("\\", "\\\\").replace("\"", "\\\"") + "\"";
     }
 }

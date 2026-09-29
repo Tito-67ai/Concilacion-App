@@ -93,7 +93,12 @@ public class ConciliacionService {
         // Banco Galicia" creyendo que es real, y no hay ni un signo de que algo
         // este mal. Un error visible se arregla mirando; eso no.
         if (estadoCatalogos.hayProblema()) {
-            throw new CatalogoNoDisponibleException(estadoCatalogos.motivo(), true);
+            // El `reintentable` sale del estado y no se hardcodea: el cliente ya
+            // decidio si reintentar sirve cuando lanzo la excepcion. Decir siempre
+            // que si hace que un boton de "reintentar" con credenciales malas
+            // prometa algo que no va a pasar.
+            throw new CatalogoNoDisponibleException(estadoCatalogos.motivo(),
+                    estadoCatalogos.reintentable());
         }
         return new OpcionesFiltro(cuentaBancariaRepo.findAllByOrderByNombreAsc(),
                 cuentaContableRepo.findAllByOrderByCodigoAsc(),

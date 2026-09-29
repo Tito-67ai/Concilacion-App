@@ -70,15 +70,19 @@ public class SincronizadorCatalogosArranque implements CommandLineRunner {
         } catch (CatalogoNoDisponibleException e) {
             // Se guarda el motivo para que la pantalla lo muestre despues. El log
             // es para el que esta mirando la consola; el estado es para el usuario.
-            estado.marcarFallo(e.getMessage());
+            // El `reintentable` viaja con el motivo porque no se puede deducir
+            // despues: dice si reintentar sirve o si hay que cambiar algo.
+            estado.marcarFallo(e.getMessage(), e.esReintentable());
             log.error("No se pudieron sincronizar los catalogos al arrancar: {}", e.getMessage(), e);
             log.error("La app sigue arrancando, pero los desplegables del filtro van a mostrar este "
                     + "motivo en vez de una lista de cuentas. La app NO va a sembrar cuentas propias, "
                     + "para que no aparezcan cuentas inventadas al lado de las de la empresa.");
         } catch (RuntimeException e) {
-            // Un fallo propio (no de la API): un UNIQUE de CBU repetido, un tipo de
-            // dato que no entra en la columna. Tambien se registra y se sigue.
-            estado.marcarFallo("No se pudieron sincronizar los catalogos: " + e.getMessage());
+            // Un fallo propio (no de la API): un UNIQUE de codigo repetido, un tipo
+            // de dato que no entra en la columna. Tambien se registra y se sigue.
+            // No reintentable a mano: un fallo nuestro no se caera solo, y ofrecer
+            // un reintentar que no arregla nada es mentir sobre el estado.
+            estado.marcarFallo("No se pudieron sincronizar los catalogos: " + e.getMessage(), false);
             log.error("Fallo inesperado al sincronizar los catalogos: {}", e.getMessage(), e);
         }
     }

@@ -27,12 +27,20 @@ import java.time.Duration;
  * que revocarlo. Un default vacio hace que el error sea "no hay credenciales" en
  * vez de "el repo esta filtrado".
  *
- * ── POR QUE LAS RUTAS SON CONFIGURABLES Y NO CONSTANTES ───────────────────────
+ * ── LAS RUTAS ESTAN CONFIRMADAS, NO SON UN SUPUESTO ───────────────────────────
  *
- * El codigo del snippet que motiva esto tiene las rutas "/cuentas" y "/circuitos"
- * escritas, y el mismo comentario dice "revisa en la documentacion la URL exacta".
- * O sea: no las sabia. Si quedan como constante, el dia que se confirmen hay que
- * recompilar; como configuracion, se corrigen en el yml y se reinicia.
+ * Antes de escribirlas aca, la spec de Xubio. Publica su OpenAPI en
+ *
+ *   https://xubio.com/API/1.1/swagger.json
+ *
+ * y de ahi salen, textualmente, los tres default de este record. Antes eran un
+ * invento tomado de un ejemplo generico; ahora son los de la API real.
+ *
+ * ── POR QUE SIGUEN SIENDO CONFIGURABLES ───────────────────────────────────────
+ *
+ * Porque son configurables aunque ya se haya consultado la documentacion y el
+ * default sea el valor correcto. Xubio tiene mas de un ambiente y un plan puede
+ * apuntar a otro; con esto, se corrige en el yml y se reinicia, sin recompilar.
  */
 @ConfigurationProperties(prefix = "conciliacion.xubio")
 public class XubioProperties {
@@ -50,11 +58,27 @@ public class XubioProperties {
     private String clientSecret = "";
 
     /** Ruta del token, relativa a baseUrl. */
-    private String rutaToken = "/auth/token";
+    private String rutaToken = "/TokenEndpoint";
 
-    private String rutaCuentasBancarias = "/cuentas-bancarias";
-    private String rutaCuentasContables = "/cuentas-contables";
-    private String rutaCircuitos = "/circuitos";
+    /**
+     * Cuentas contables. OJO: se llama `cuenta` y no `cuentas-contables` porque asi
+     * se llama en Xubio, y es el nombre corto: no lo que unopondria.
+     */
+    private String rutaCuentasContables = "/cuenta";
+
+    /** Circuitos contables. */
+    private String rutaCircuitos = "/circuitoContableBean";
+
+    /**
+     * NO hay ruta de cuentas bancarias, y no es una omision: la API de Xubio no
+     * expone las cuentas bancarias de la empresa. Se recorrio la spec entera y el
+     * unico recurso con "banco" en el nombre es `GET /banco`, que devuelve el
+     * catalogo de entidades bancarias (Nacion, Galicia, Santander), no las cuentas
+     * de la empresa, y sin CBU ni numero de cuenta.
+     *
+     * El CBU es justamente contra lo que se concilia, asi que el filtro de cuenta
+     * bancaria se queda como dato local. Ver `DataSeeder` y `CuentaBancaria`.
+     */
 
     /**
      * Corte de conexion y de lectura.
@@ -103,14 +127,11 @@ public class XubioProperties {
     public String getRutaToken() { return rutaToken; }
     public void setRutaToken(String rutaToken) { this.rutaToken = rutaToken; }
 
-    public String getRutaCuentasBancarias() { return rutaCuentasBancarias; }
-    public void setRutaCuentasBancarias(String v) { this.rutaCuentasBancarias = v; }
-
     public String getRutaCuentasContables() { return rutaCuentasContables; }
     public void setRutaCuentasContables(String v) { this.rutaCuentasContables = v; }
 
     public String getRutaCircuitos() { return rutaCircuitos; }
-    public void setRutaCircuitos(String rutaCircuitos) { this.rutaCircuitos = rutaCircuitos; }
+    public void setRutaCircuitos(String v) { this.rutaCircuitos = v; }
 
     public Duration getTimeout() { return timeout; }
     public void setTimeout(Duration timeout) { this.timeout = timeout; }
