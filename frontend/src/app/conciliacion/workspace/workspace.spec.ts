@@ -218,3 +218,118 @@ describe('Workspace: menus de Importar y Exportar', () => {
     expect((fixture.nativeElement as HTMLElement).querySelectorAll('.dropdown-menu.show').length).toBe(1);
   });
 });
+
+/**
+ * Que un fallo de catalogo se vea como un fallo y no como una lista vacia.
+ *
+ * ── POR QUE ESTE CASO NECESITA SU PROPIO ARCHIVO ────────────────────────────────
+ *
+ * Porque es la unica parte de la pantalla donde la diferencia se ve en la cara
+ * del usuario, y en ninguna de las dos versiones el DOM se ve igual de raro: un
+ * desplegable con cero opciones. En el error se lee el motivo; en el "no tenes
+ * cuentas cargadas" no se lee nada. Ningun snapshot ni una foto de pantalla
+ *orphic lo distingue, asi que hace falta un assert explicito sobre el texto.
+ *
+ * ── QUE SE ESTA PROBANDO ───────────────────────────────────────────────────────
+ *
+ * El backend responde 503 con {error, detalle, reintentable} cuando no pudo leer
+ * los catalogos de Xubio. Esto verifica que:
+ *  1. el texto del `detalle` aparece en la pantalla, y
+ *  2. el resto de la pantalla sigue computando (los menus se arman) en vez de
+ *     cortarse el error.
+ *
+ * El punto 2 importa. El error de los catalogos no puede dejar la pantalla
+ * a medio cargar: si al ver el 503 el componente deja de pedir extractores y
+ * formatos, un problema de Xubio se convierte en un problema de la app entera,
+ * y arreglar Xubio no alcanza porque el estado del navegador quedo a medias.
+ */
+describe('Workspace: fallo al leer los catalogos', () => {
+  let fixture: ComponentFixture<Workspace>;
+  let http: HttpTestingController;
+
+  const extractores = [
+    {
+      codigo: 'EXCEL',
+      descripcion: 'Planilla de Excel del banco (.xlsx, .xls)',
+      origen: 'EXCEL' as const,
+      aceptaArchivo: true,
+      puedeEjecutarseSolo: false,
+      extensiones: ['.xlsx', '.xls'],
+    },
+  ];
+
+  // El backend NO devuelve CSV: es el unico formato que se arma en el navegador.
+  // Por eso la lista del server va vacia, y el unico CSV que puede aparecer en el
+  // menu es el que agrega el componente.
+  const formatos: unknown[] = [];
+
+  /** El 503 que devuelve el backend cuando Xubio no se puede leer. */
+  const ERROR_XUBIO = {
+    error: 'CATALOGO_NO_DISPONIBLE',
+    detalle: 'Xubio esta habilitado pero faltan las credenciales. Faltan client-id o client-secret.',
+    reintentable: false,
+  };
+
+  beforeEach(async () => {
+    await TestBed.configureTestingModule({
+      imports: [Workspace],
+      providers: [provideHttpClient(), provideHttpClientTesting()],
+    }).compileComponents();
+  });
+
+  afterEach(() => {
+    http.verify();
+  });
+
+  it('muestra el motivo del fallo y no una lista vacia sin explicar', async () => {
+    fixture = TestBed.createComponent(Workspace);
+    fixture.detectChanges();
+    http = TestBed.inject(HttpTestingController);
+
+    http
+      .expectOne((r) => r.url.endsWith('/filtros/opciones'))
+      .flush(ERROR_XUBIO, { status: 503, statusText: 'Service Unavailable' });
+    http.expectOne((r) => r.url.endsWith('/importaciones/extractores')).flush(extractores);
+    http.expectOne((r) => r.url.endsWith('/exportaciones/formatos')).flush(formatos);
+    fixture.detectChanges();
+
+    const texto = (fixture.nativeElement as HTMLElement).textContent ?? '';
+
+    // El `detalle` del backend, no un "algo fallo" generico. El backend ya sabe
+    // distinguir "faltan credenciales" de "dio timeout" de "no respondio el
+    // token", y tira esa informacion a la basura si el front no la muestra.
+    expect(texto).toContain('faltan las credenciales');
+
+    // Y que no aparezca un error generico que no dice nada util, ni un literal
+    // "undefined" de un template mal armado.
+    expect(texto).not.toContain('undefined');
+  });
+
+  it('el menu Exportar se sigue armando aunque fallen los catalogos', async () => {
+    fixture = TestBed.createComponent(Workspace);
+    fixture.detectChanges();
+    http = TestBed.inject(HttpTestingController);
+
+    http
+      .expectOne((r) => r.url.endsWith('/filtros/opciones'))
+      .flush(ERROR_XUBIO, { status: 503, statusText: 'Service Unavailable' });
+    http.expectOne((r) => r.url.endsWith('/importaciones/extractores')).flush(extractores);
+    http.expectOne((r) => r.url.endsWith('/exportaciones/formatos')).flush(formatos);
+    fixture.detectChanges();
+
+    // OJO sobre lo que este test prueba y lo que no. Prueba que la pantalla
+    // SIGUE COMPUTANDO el menu, o sea que el error de los catalogos no cortó la
+    // carga del resto. NO prueba que los botones se puedan apretar: en la pantalla
+    // real estan deshabilitados hasta que se aplica un filtro, que es lo correcto
+    // (para importar hay que elegir en que cuenta, y sin cuentas no hay filtro).
+    // Ese deshabilitado es de antes de esto y no tiene nada que ver con Xubio.
+    (fixture.componentInstance as unknown as { menuExportar: { set(v: boolean): void } }).menuExportar.set(true);
+    fixture.detectChanges();
+
+    const divs = (fixture.nativeElement as HTMLElement).querySelectorAll<HTMLElement>('.dropdown-menu.show');
+    const textos = Array.from(divs[divs.length - 1]?.querySelectorAll('button, label') ?? []).map((b) =>
+      b.textContent?.trim(),
+    );
+    expect(textos).toEqual(['CSV']);
+  });
+});
