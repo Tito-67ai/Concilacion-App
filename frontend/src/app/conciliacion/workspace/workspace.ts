@@ -1,5 +1,5 @@
 import { DecimalPipe } from '@angular/common';
-import { HttpErrorResponse } from '@angular/common/http';
+import { HttpErrorResponse, HttpResponse } from '@angular/common/http';
 import { Component, OnInit, computed, inject, signal } from '@angular/core';
 import { finalize, forkJoin } from 'rxjs';
 import { ConciliacionService } from '../conciliacion.service';
@@ -10,6 +10,8 @@ import {
   FiltroConciliacion,
   ImportacionBancaria,
   InfoExtractor,
+  InfoFormatoExportacion,
+  LadoReporte,
   MovimientoBancario,
   MovimientoContable,
   OpcionesFiltro,
@@ -84,6 +86,29 @@ export class Workspace implements OnInit {
   protected readonly menuImportar = signal(false);
   protected readonly importando = signal(false);
 
+  protected readonly formatos = signal<InfoFormatoExportacion[]>([]);
+  protected readonly menuExportar = signal(false);
+  protected readonly exportando = signal(false);
+
+  /**
+   * Lo que hay en el menu Exportar: lo que el backend sabe hacer, y el CSV al
+   * final.
+   *
+   * El CSV va al final y no primero a proposito. Es el unico de los tres que se
+   * arma en el navegador, y si la lista mezclara los dos origenes sin distinguirlos
+   * el menu mentiría: `formatos()` devuelve lo que el SERVIDOR sabe exportar, y
+   * contestaria "Excel, PDF" mientras el menu muestra tres cosas.
+   */
+  protected readonly opcionesExportar = computed<InfoFormatoExportacion[]>(() => [
+    ...this.formatos(),
+    {
+      formato: 'csv',
+      contentType: 'text/csv',
+      extension: 'csv',
+      etiqueta: 'CSV',
+    },
+  ]);
+
   private ultimoImportado = signal<ImportacionBancaria | null>(null);
   protected readonly ultimaImportacion = this.ultimoImportado.asReadonly();
 
@@ -101,6 +126,14 @@ export class Workspace implements OnInit {
     this.service.getExtractores().subscribe({
       next: (x) => this.extractores.set(x),
       error: () => this.extractores.set([]),
+    });
+
+    // Los formatos de salida, por la misma razon y con el mismo perdon: si este
+    // endpoint no existiera, el menu Exportar tiene que igual ofrecer el CSV, que
+    // no depende del servidor. De ahi que el error se ignore y la pantalla no caiga.
+    this.service.getFormatosExportacion().subscribe({
+      next: (f) => this.formatos.set(f),
+      error: () => this.formatos.set([]),
     });
   }
 
@@ -297,7 +330,20 @@ export class Workspace implements OnInit {
       });
   }
 
-  protected subirArchivo(event: Event): void {
+  /**
+   * Sube el archivo al extractor que el usuario eligio del menu.
+   *
+   * `codigoExtractor` se pasa desde el `@for` del HTML, no se deduce del nombre del
+   * archivo ni de la extension. Dos razones:
+   *
+   *  - Un `.xlsx` mal formado casi siempre es un CSV que alguien cambio de nombre,
+   *    y viceversa. Adivinar por la extension manda al backend a un lector que va a
+   *    fallar con un mensaje que no es el que corresponde. Eligiendo explicitamente
+   *    el error dice la verdad: "este archivo no es un Excel legible".
+   *  - El dia que la fuente de PDF acepte tambien imagenes escaneadas, o que
+   *    EXCEL acepte `.ods`, el menu ya ofrece las dos cosas sin tocar este metodo.
+   */
+  protected subirArchivo(event: Event, codigoExtractor: string): void {
     const input = event.target as HTMLInputElement;
     const archivo = input.files?.[0];
     // Se vacia el input antes de nada: si el usuario elige el MISMO archivo dos
@@ -314,14 +360,14 @@ export class Workspace implements OnInit {
     this.importando.set(true);
     this.menuImportar.set(false);
     this.service
-      .importarArchivo(cuenta, archivo)
+      .importarArchivo(cuenta, archivo, codigoExtractor, this.filtro()?.desde ?? undefined, this.filtro()?.hasta ?? undefined)
       .pipe(finalize(() => this.importando.set(false)))
       .subscribe({
         next: (r) => {
           this.ultimoImportado.set(r);
           this.mensaje.set({
             tipo: r.insertados > 0 ? 'ok' : 'info',
-            texto: `Leídos ${r.leidos} de ${archivo.name}: ${r.insertados} nuevos, ${r.duplicados} repetidos.`,
+            texto: `Leídos ${r.leidos} de ${archivo.name} (${codigoExtractor}): ${r.insertados} nuevos, ${r.duplicados} repetidos.`,
           });
           this.cargar();
         },
@@ -332,24 +378,205 @@ export class Workspace implements OnInit {
   // ─── Exportar ─────────────────────────────────────────────────────────────────
 
   /**
+   * El texto de "Buscar" que va al archivo.
+   *
+   * La pantalla tiene DOS buscador, uno por panel, y el endpoint de exportacion
+   * acepta UNO. Se mandan juntos y el backend aplica el mismo texto a los dos lados
+   * del reporte.
+   *
+   * Y eso no es lo mismo que la pantalla, y conviene saberlo. En pantalla el
+   * buscador izquierdo filtra los bancarios y el derecho los contables, por
+   * separado. Al exportar, el archivo se arma en el servidor y no puede aplicar
+   * dos textos distintos a dos mitades del mismo reporte sin duplicar la consulta.
+   *
+   * Las dos opciones eran: (a) exportar cada lado por separado con su propio
+   * buscador, que obliga a apretar Exportar dos veces, o (b) un solo archivo con un
+   * solo criterio, que es lo que hace. Se eligio (b) porque el motivo de usar el
+   * buscador es reducir un archivo, y partirlo en dos para tener que abrir dos
+   * archivos es peor. Cuando hay texto en los dos, gana el del panel BANCO, que es
+   * el de la izquierda y el primero que se lee.
+   */
+  private busquedaDeExportacion(): string {
+    if (this.tab() !== 'a-conciliar') {
+      // En la pestana de conciliados no hay buscador: el unico filtro de texto
+      // posible es el de los bancarios, asi que no viaja ninguno.
+      return '';
+    }
+    return this.busquedaBanco().trim() || this.busquedaContable().trim();
+  }
+
+  /**
    * Exporta lo que se esta VIENDO, no todo lo de la base: si el panel esta filtrado
-   * por el texto de "Buscar", el CSV sale con ese filtro. Un "Exportar" que trae
+   * por el texto de "Buscar", el archivo sale con ese filtro. Un "Exportar" que trae
    * 4.000 filas cuando en pantalla hay 12 es la razon por la que la gente deja de
    * usar el boton.
    */
-  protected exportar(): void {
+  protected exportar(formato: string): void {
     const f = this.filtro();
     if (!f) {
       this.mensaje.set({ tipo: 'info', texto: 'Aplicá los filtros antes de exportar.' });
       return;
     }
-    const q = (this.tab() === 'a-conciliar' ? this.busquedaBanco() : '').trim().toLowerCase();
+    this.menuExportar.set(false);
+
+    // El CSV se arma aca; Excel y PDF los hace el servidor. Ver `descargarCsv`.
+    if (formato === 'csv') {
+      this.exportarCsv(f);
+      return;
+    }
+
+    this.exportando.set(true);
+    this.service
+      .descargarReporte(formato, f, this.busquedaDeExportacion(), this.ladoDeExportacion())
+      .pipe(finalize(() => this.exportando.set(false)))
+      .subscribe({
+        next: (resp) => this.guardarArchivo(resp, this.nombreDe(formato, f)),
+        error: (e) => this.mensajeDeExportacion(e),
+      });
+  }
+
+  /**
+   * Traduce el error de una descarga a un mensaje.
+   *
+   * NO es `mensajeDe`, y la razon es tecnica pero visible: la descarga se pide con
+   * `responseType: 'blob'`, asi que el cuerpo del error tambien llega como Blob y
+   * no como el JSON que `mensajeDe` sabe leer. Sin esto, un 422 del backend
+   * ("el PDF esta escaneado, hace falta OCR") le llega al usuario como "Error 422."
+   * y se pierde justamente la frase que le dice que subio el archivo equivocado.
+   *
+   * El texto sale del backend y se muestra tal cual. Si el cuerpo no es JSON (un
+   * proxy que devuelve HTML, por ejemplo), se cae al mensaje por status, que es
+   * feo pero cierto.
+   */
+  private mensajeDeExportacion(e: unknown): void {
+    const resp = e as HttpErrorResponse;
+    const cuerpo = resp?.error;
+
+    if (!(cuerpo instanceof Blob)) {
+      this.mensaje.set({ tipo: 'error', texto: this.mensajeDe(e) });
+      return;
+    }
+
+    cuerpo
+      .text()
+      .then((texto) => {
+        let mensaje = `No se pudo generar el archivo (error ${resp.status}).`;
+        try {
+          const json = JSON.parse(texto) as { detalle?: unknown };
+          if (typeof json.detalle === 'string' && json.detalle.length > 0) {
+            mensaje = json.detalle;
+          }
+        } catch {
+          // No es JSON. Se deja el mensaje por status.
+        }
+        this.mensaje.set({ tipo: 'error', texto: mensaje });
+      })
+      .catch(() => this.mensaje.set({ tipo: 'error', texto: `No se pudo generar el archivo (error ${resp.status}).` }));
+  }
+
+  /**
+   * Que pestana se exporta.
+   *
+   * Se manda SIEMPRE, sin que el backend lo deduzca de los filtros, porque con los
+   * mismos filtros las dos pestanas muestran cosas distintas: la primera son los
+   * movimientos sueltos de los dos paneles, la segunda el historico de lo ya
+   * conciliado. Si se dejara que lo tomara, el boton sobre "Movimientos a
+   * conciliar" bajaria el historial y el usuario no se enteraria hasta abrir el
+   * archivo.
+   */
+  private ladoDeExportacion(): LadoReporte {
+    return this.tab() === 'conciliados' ? 'CONCILIADOS' : 'PENDIENTES';
+  }
+
+  /**
+   * Guarda el blob que devolvio el backend con el nombre que puso el.
+   *
+   * El nombre lo decide el servidor (`Content-Disposition`) y no esta copia. Ahi
+   * va el rango de fechas y el lado, para que en la carpeta de descargas se
+   * distingan dos exportaciones de la misma semana. Reimplementar esa regla aca
+   * seria tenerla en dos lugares: el dia que el backend le anada el nombre de la
+   * cuenta, esta pantalla seguiria bajando archivos que se llaman todos igual y
+   * nadie sabria cual es cual.
+   *
+   * Si la cabecera no viniera (un proxy que la saca es el caso comun), se arma
+   * uno con los mismos datos. No es perfecto, pero es un archivo con nombre en vez
+   * de uno que el navegador llama `download` sin extensión, que es peor.
+   */
+  private guardarArchivo(resp: HttpResponse<Blob>, nombrePorDefecto: string): void {
+    const blob = resp.body;
+    if (!blob) {
+      // Un 200 sin cuerpo no deberia pasar, pero si pasara, lo que hay que decir es
+      // que no se recibio nada, no mostrar un error de JavaScript en blanco.
+      this.mensaje.set({ tipo: 'error', texto: 'El servidor respondió sin contenido: no se puede descargar.' });
+      return;
+    }
+    this.descargarBlob(blob, this.nombreDelHeader(resp.headers.get('content-disposition'), nombrePorDefecto));
+  }
+
+  /** El mismo nombre que arma el backend, para cuando la cabecera no llegue. */
+  private nombreDe(formato: string, f: FiltroConciliacion): string {
+    const rango = `${f.desde ?? 'inicio'}-a-${f.hasta ?? 'hoy'}`;
+    const lado = this.ladoDeExportacion() === 'CONCILIADOS' ? 'conciliados' : 'pendientes';
+    return `conciliacion-${lado}-${rango}.${formato === 'excel' ? 'xlsx' : formato}`;
+  }
+
+  /**
+   * Saca el nombre de un `Content-Disposition`.
+   *
+   * Se prefiere la forma `filename*=UTF-8''...` (RFC 5987), que es la que puede
+   * traer acentos, y se cae a la forma simple entrecomillada. Se desarma con
+   * `split` y no con una regexp laxa porque el valor va entre comillas dobles y
+   * adentro puede haber un `;`, que es justo el separador de los parametros: "Juan;
+   * Perez.xlsx" partido por `;` da un nombre con la extension perdida y Windows
+   * deja de saber que tipo de archivo es.
+   */
+  private nombreDelHeader(contentDisposition: string | null, porDefecto: string): string {
+    if (!contentDisposition) {
+      return porDefecto;
+    }
+    const extensible = /filename\*=(?:UTF-8|utf-8)''([^;]+)/.exec(contentDisposition);
+    if (extensible) {
+      return decodeURIComponent(extensible[1]);
+    }
+    const simple = /filename="([^"]*)"/.exec(contentDisposition);
+    return simple ? simple[1] : porDefecto;
+  }
+
+  /**
+   * El CSV, armado en el navegador con los datos que ya estan en memoria.
+   *
+   * ── POR QUE ESTE Y NO OTRO FORMATO MAS EN EL SERVIDOR ────────────────────────
+   *
+   * Porque el CSV necesita un BOM (U+FEFF) al principio y un separador ";" en vez
+   * de ",". Son dos cosas que hacen falta para que Excel en es-AR no se coma la
+   * coma decimal, y en el servidor habria que traer una libreria de CSV o armarlo a
+   * mano con el mismo cuidado. En el navegador sale en cuatro lineas.
+   *
+   * ── LAS COLUMNAS TIENEN QUE SER LAS MISMAS QUE LAS DEL SERVIDOR ──────────────
+   *
+   * Y antes no lo eran: el CSV de conciliados traia "COMPROBANTE BCO" y "COMPROBANTE
+   * CTBLE" en dos columnas, y el .xlsx del servidor trae una sola, "COMPROBANTES",
+   * con los dos juntos separados por " / ". Con eso, exportar los dos formatos y
+   * compararlos da dos archivos con la misma informacion partida distinto, y la
+   * conclusion razonable del usuario es que uno esta roto.
+   *
+   * El orden y los nombres de columna estan escritos aca a mano y en
+   * `ReporteService.java` del backend. Es una duplicacion, y la alternativa
+   * (preguntarle al backend las columnas por un endpoint) es mas lio que el ahorro de
+   * una columna de un archivo que se arma entero en el servidor. Lo que evita que se
+   * separen es que las dos copias estan juntas: `ReporteService.java` y este metodo,
+   * y cualquier diferencia se ve en el primer export real que el usuario hace
+   * abriendo los dos archivos.
+   */
+  private exportarCsv(f: FiltroConciliacion): void {
+    const q = this.busquedaDeExportacion().toLowerCase();
+    // Un solo texto para los dos lados, igual que el servidor. Ver
+    // `busquedaDeExportacion`.
     const visiblesBanco = this.banco().filter(
       (m) => !q || m.detalle.toLowerCase().includes(q) || (m.comprobante ?? '').toLowerCase().includes(q),
     );
-    const qc = (this.tab() === 'a-conciliar' ? this.busquedaContable() : '').trim().toLowerCase();
     const visiblesContable = this.contable().filter(
-      (m) => !qc || m.concepto.toLowerCase().includes(qc) || m.comprobante.toLowerCase().includes(qc),
+      (m) => !q || m.concepto.toLowerCase().includes(q) || m.comprobante.toLowerCase().includes(q),
     );
 
     const filas =
@@ -376,7 +603,7 @@ export class Workspace implements OnInit {
             ]),
           ]
         : [
-            ['FECHA', 'DETALLE', 'IMPORTE', 'BANCO', 'CUENTA', 'CIRCUITO', 'COMPROBANTE BCO', 'COMPROBANTE CTBLE'],
+            ['FECHA', 'DETALLE', 'IMPORTE', 'BANCO', 'CUENTA CONTABLE', 'CIRCUITO', 'COMPROBANTES', 'ESTADO'],
             ...this.conciliados().map((c) => [
               c.fecha,
               c.detalle,
@@ -384,12 +611,12 @@ export class Workspace implements OnInit {
               c.cuentaBancaria.banco,
               c.cuentaContable.codigo,
               c.circuito.nombre,
-              c.movimientoBancario.comprobante ?? '',
-              c.movimientoContable.comprobante,
+              `${c.movimientoBancario.comprobante ?? ''} / ${c.movimientoContable.comprobante}`,
+              c.estado,
             ]),
           ];
 
-    this.descargarCsv(filas, `conciliacion-${f.desde ?? 'inicio'}-a-${f.hasta ?? 'hoy'}.csv`);
+    this.descargarCsv(filas, this.nombreDe('csv', f));
   }
 
   private descargarCsv(filas: string[][], nombre: string): void {
@@ -402,7 +629,18 @@ export class Workspace implements OnInit {
     // "COMISIÓN". Ahi ya no queda forma de saber que paso. Con el codigo no hay nada
     // invisible que se pueda perder, y se puede buscar con Ctrl+F.
     const BOM = String.fromCharCode(0xfeff);
-    const blob = new Blob([BOM + cuerpo], { type: 'text/csv;charset=utf-8' });
+    this.descargarBlob(new Blob([BOM + cuerpo], { type: 'text/csv;charset=utf-8' }), nombre);
+  }
+
+  /**
+   * Dispara la descarga de un blob.
+   *
+   * El `<a>` no esta en el HTML: se crea, se usa y se descarta. Ponerlo en el
+   * template con `href=""` y cambiar el href por codigo obliga a que el elemento
+   * exista siempre en la pagina, y en una pantalla con dos Pestañas y cuatro
+   * filtros ya hay bastante estado. Asi son cuatro lineas y ningun elemento fantasma.
+   */
+  private descargarBlob(blob: Blob, nombre: string): void {
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
     a.href = url;

@@ -93,8 +93,8 @@
         class="btn btn-sm rounded-0 border-0 text-dark px-3"
         style="background-color: #e4e4e4"
         [disabled]="!filtro() || importando()"
-        (click)="menuImportar.set(!menuImportar())"
-        title="Traer movimientos del banco, o subir un archivo exportado del home banking."
+        (click)="menuImportar.set(!menuImportar()); menuExportar.set(false)"
+        title="Subir un archivo exportado del home banking: en Excel o en PDF."
       >
         @if (importando()) {
           Importando…
@@ -105,16 +105,33 @@
       @if (menuImportar()) {
         <div class="menu dropdown-menu show rounded-0 shadow">
           @for (x of extractores(); track x.codigo) {
+            @if (x.aceptaArchivo) {
+              <label class="dropdown-item" [title]="x.descripcion">
+                {{ x.descripcion }}
+                <!--
+                  El `accept` sale del backend, no esta escrito aca. Estaba en
+                  ".csv,.txt", una lista que ya no correspondia con nada: con los
+                  extractores de Excel y PDF, el filtro decia que solo se aceptaban
+                  CSVs y un .xlsx quedaba en gris en el selector de archivos. Peor
+                  aun, el filtro es una ayuda visual, no una seguridad: el
+                  `accept` puede esquivarse arrastrando el archivo. Si la lista
+                  esta desactualizada, el usuario ve un archivo en gris, no sabe
+                  por que, y si lo fuerza igual el error le llega del backend
+                  tres pasos despues. Con la lista viniendo del extractor, el
+                  menu nunca ofrece algo que el backend no sepa leer.
+                -->
+                <input
+                  type="file"
+                  class="d-none"
+                  [attr.accept]="x.extensiones.length ? x.extensiones.join(',') : null"
+                  (change)="subirArchivo($event, x.codigo)"
+                />
+              </label>
+            }
             @if (x.puedeEjecutarseSolo) {
               <button type="button" class="dropdown-item" [title]="x.descripcion" (click)="correrExtractor(x.codigo)">
                 {{ x.codigo }} — {{ x.descripcion }}
               </button>
-            }
-            @if (x.aceptaArchivo) {
-              <label class="dropdown-item" [title]="x.descripcion">
-                Subir archivo ({{ x.codigo }})
-                <input type="file" class="d-none" accept=".csv,.txt" (change)="subirArchivo($event)" />
-              </label>
             }
           }
           @if (extractores().length === 0) {
@@ -124,16 +141,36 @@
       }
     </div>
 
-    <button
-      type="button"
-      class="btn btn-sm rounded-0 border-0 text-dark px-3"
-      style="background-color: #e4e4e4"
-      [disabled]="!filtro()"
-      (click)="exportar()"
-      title="Descarga en CSV lo que se está viendo en esta pestaña, con el filtro y la búsqueda aplicados."
-    >
-      Exportar
-    </button>
+    <div class="position-relative">
+      <button
+        type="button"
+        class="btn btn-sm rounded-0 border-0 text-dark px-3"
+        style="background-color: #e4e4e4"
+        [disabled]="!filtro() || exportando()"
+        (click)="menuExportar.set(!menuExportar()); menuImportar.set(false)"
+        title="Descargar lo que se está viendo en esta pestaña, con el filtro y la búsqueda aplicados."
+      >
+        @if (exportando()) {
+          Generando…
+        } @else {
+          Exportar &#9662;
+        }
+      </button>
+      @if (menuExportar()) {
+        <div class="menu dropdown-menu show rounded-0 shadow">
+          @for (fo of opcionesExportar(); track fo.formato) {
+            <button type="button" class="dropdown-item" (click)="exportar(fo.formato)">
+              {{ fo.etiqueta }}
+            </button>
+          }
+          @if (formatos().length === 0) {
+            <span class="dropdown-item-text text-muted small">
+              No se pudo consultar los formatos del servidor. Solo queda CSV.
+            </span>
+          }
+        </div>
+      }
+    </div>
 
     @if (seleccionados().banco || seleccionados().contable) {
       <span class="sub ms-auto text-end">

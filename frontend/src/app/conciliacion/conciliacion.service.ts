@@ -1,4 +1,4 @@
-import { HttpClient, HttpParams } from '@angular/common/http';
+import { HttpClient, HttpParams, HttpResponse } from '@angular/common/http';
 import { Injectable, inject } from '@angular/core';
 import { Observable } from 'rxjs';
 import {
@@ -6,7 +6,9 @@ import {
   FiltroConciliacion,
   ImportacionBancaria,
   InfoExtractor,
+  InfoFormatoExportacion,
   IsoDate,
+  LadoReporte,
   MovimientoBancario,
   MovimientoContable,
   OpcionesFiltro,
@@ -19,6 +21,7 @@ import {
  */
 const BASE = '/api/conciliaciones';
 const IMPORT_BASE = '/api/importaciones';
+const EXPORT_BASE = '/api/exportaciones';
 
 @Injectable({ providedIn: 'root' })
 export class ConciliacionService {
@@ -95,7 +98,10 @@ export class ConciliacionService {
   // contrato declarado, para que cuando se agregue el boton Importar no haya que
   // adivinar la forma de las respuestas.
 
-  /** Que fuentes hay: DEMO (la semilla) y CSV hoy; APIs bancarias en el futuro. */
+  /**
+   * Que fuentes hay. Hoy: EXCEL y PDF, las dos de archivo. Las APIs bancarias
+   * aparecen solas cuando alguien escriba su extractor.
+   */
   getExtractores(): Observable<InfoExtractor[]> {
     return this.http.get<InfoExtractor[]>(`${IMPORT_BASE}/extractores`);
   }
@@ -112,11 +118,21 @@ export class ConciliacionService {
     );
   }
 
-  /** Sube el archivo que bajo el usuario del home banking. */
+  /**
+   * Sube el archivo que bajo el usuario del home banking.
+   *
+   * `extractor` NO tiene valor por defecto, y antes si lo tenia ('CSV'). Es a
+   * proposito: un default aca es un default invisible. El codigo llama a este metodo
+   * desde el menu, y ese menu siempre manda el `codigo` del extractor que eligio el
+   * usuario. Si faltara, el backend recibiria 'CSV', que ya no existe, y devolveria
+   * 404 con un mensaje que no namesake con ninguna de las dos opciones del menu.
+   * Que falte un argumento obligatorio es un error de compilacion; que falte en
+   * ejecucion es un 404 a las dos de la manana.
+   */
   importarArchivo(
     cuentaBancariaId: number,
     archivo: File,
-    extractor = 'CSV',
+    extractor: string,
     desde?: IsoDate,
     hasta?: IsoDate,
   ): Observable<ImportacionBancaria> {
@@ -133,6 +149,77 @@ export class ConciliacionService {
       params = params.set('cuentaBancariaId', cuentaBancariaId);
     }
     return this.http.get<ImportacionBancaria[]>(IMPORT_BASE, { params });
+  }
+
+  // ─── Exportacion ──────────────────────────────────────────────────────────────
+
+  /**
+   * Que formatos se pueden descargar. Es lo que lista el menu Exportar.
+   *
+   * El menu se arma con la respuesta y no con una lista escrita en el HTML a
+   * proposito: agregar un renderizador en Java (uno nuevo, digamos) lo hace
+   * aparecer solo, sin tocar la pantalla. Con la lista en el HTML, el dia del
+   * formato nuevo el menu queda mintiendo: ofrece lo de ayer.
+   *
+   * El CSV NO viene en esta lista porque se arma en el navegador, no en el
+   * servidor. Lo agrega el componente a mano, y el comentario del modelo explica
+   * por que esa excepcion esta justificada.
+   */
+  getFormatosExportacion(): Observable<InfoFormatoExportacion[]> {
+    return this.http.get<InfoFormatoExportacion[]>(`${EXPORT_BASE}/formatos`);
+  }
+
+  /**
+   * Pide el archivo al servidor y lo devuelve como Blob, con la respuesta COMPLETA.
+   *
+   * `observe: 'response'` y no solo `'blob'` a proposito: el nombre del archivo lo
+   * decide el backend en el `Content-Disposition` (le pone el rango de fechas y el
+   * lado adentro, para que en la carpeta de descargas se vea cual es cual). Si el
+   * nombre lo armara el cliente, habria que reimplementar esa regla en TypeScript y
+   * las dos copias empezarían a diferir en el primer ajuste.
+   */
+  descargarReporte(
+    formato: string,
+    filtro: FiltroConciliacion,
+    busqueda: string,
+    lado: LadoReporte,
+  ): Observable<HttpResponse<Blob>> {
+    return this.http.get(`${EXPORT_BASE}/${encodeURIComponent(formato)}`, {
+      params: this.construirParamsExportacion(filtro, busqueda, lado),
+      observe: 'response',
+      responseType: 'blob',
+    });
+  }
+
+  private construirParamsExportacion(
+    filtro: FiltroConciliacion,
+    busqueda: string,
+    lado: LadoReporte,
+  ): HttpParams {
+    let params = new HttpParams().set('lado', lado);
+    if (filtro.cuentaBancariaId !== null) {
+      params = params.set('cuentaBancariaId', filtro.cuentaBancariaId);
+    }
+    if (filtro.cuentaContableId !== null) {
+      params = params.set('cuentaContableId', filtro.cuentaContableId);
+    }
+    if (filtro.circuitoId !== null) {
+      params = params.set('circuitoId', filtro.circuitoId);
+    }
+    if (filtro.desde) {
+      params = params.set('desde', filtro.desde);
+    }
+    if (filtro.hasta) {
+      params = params.set('hasta', filtro.hasta);
+    }
+    // Texto vacio NO viaja. Mandarlo como `busqueda=` haria que el backend lo
+    // tratara como "no hay filtro" igual que si no viniera, asi que el resultado
+    // seria el mismo, pero el pedido queda con un parametro vacio que confunde al
+    // que lea el log del servidor.
+    if (busqueda.trim()) {
+      params = params.set('busqueda', busqueda.trim());
+    }
+    return params;
   }
 
   /**

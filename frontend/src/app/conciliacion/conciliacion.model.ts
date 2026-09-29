@@ -14,8 +14,20 @@ export type EstadoConciliacion = 'PENDIENTE' | 'CONCILIADO' | 'DESCARTADO';
  * Ojo con 'XUBIO_API': antes el valor era 'XUBIO', que no decia si venia de la API
  * o de una carga manual. Esa distincion es justamente la que hace falta para no pisar
  * con una sincronizacion lo que el usuario escribio a mano.
+ *
+ * 'CSV' sigue en la lista aunque hoy no haya ningun extractor de CSV: el enum se
+ * persiste como STRING en la base, asi que las filas importadas antes lo tienen
+ * escrito. Si se sacara de aca, TS dejaria de aceptar esas filas al cargarlas.
+ * Un enum no se cleans: se deprecia.
  */
-export type OrigenMovimiento = 'MANUAL' | 'CSV' | 'API_BANCARIA' | 'XUBIO_API' | 'OTRO';
+export type OrigenMovimiento =
+  | 'MANUAL'
+  | 'CSV'
+  | 'EXCEL'
+  | 'PDF'
+  | 'API_BANCARIA'
+  | 'XUBIO_API'
+  | 'OTRO';
 
 /** Jackson manda LocalDate como "yyyy-MM-dd" (sin hora ni zona). */
 export type IsoDate = string;
@@ -150,6 +162,12 @@ export interface InfoExtractor {
   origen: OrigenMovimiento;
   aceptaArchivo: boolean;
   puedeEjecutarseSolo: boolean;
+  /**
+   * Que archivos acepta, con el punto: ['.xlsx', '.xls']. Viene del backend, no
+   * esta escrito aca, para que agregar un extractor no obligue a tocar la pantalla.
+   * Vacio = no se filtra el selector.
+   */
+  extensiones: string[];
 }
 
 /**
@@ -173,6 +191,37 @@ export interface ImportacionBancaria {
   terminadaEn?: IsoDateTime | null;
   detalle?: string | null;
 }
+
+/**
+ * Un formato de salida del reporte, segun `GET /api/exportaciones/formatos`.
+ *
+ * El menu Exportar se arma con lo que conteste el backend, no con una lista escrita
+ * en el HTML. Agregar un renderizador nuevo en Java lo hace aparecer solo, sin tocar
+ * esta pantalla.
+ *
+ * OJO: el CSV NO esta en esta lista. Se arma en el navegador (ver `descargarCsv` en
+ * workspace.ts) y por eso se agrega a mano en el menu. Es la unica excepcion, y esta
+ * ahi por una razon que no es capricho: el CSV necesita el BOM y el separador ";"
+ * para que Excel en es-AR no se coma la coma decimal, y eso sale mas corto en el
+ * cliente que con una libreria de CSV en el servidor.
+ */
+export interface InfoFormatoExportacion {
+  formato: string;
+  contentType: string;
+  /** Sin punto: "xlsx", "pdf". */
+  extension: string;
+  /** Lo que se muestra en el menu, ya en castellano: "Excel (.xlsx)". */
+  etiqueta: string;
+}
+
+/**
+ * Que pestana se exporta. Va como string y no como el `boolean` "esConciliado" que
+ * podria haber puesto en la URL: `PENDIENTES` y `CONCILIADOS` se leen solos en un
+ * log del servidor, y `lado=true` no dice de que lado hablabas.
+ *
+ * Los dos valores tienen que coincidir con `SolicitudReporte.Lado` en Java.
+ */
+export type LadoReporte = 'PENDIENTES' | 'CONCILIADOS';
 
 /**
  * Cuerpo de error del backend. Antes el backend no devolvia nada estructurado: un
