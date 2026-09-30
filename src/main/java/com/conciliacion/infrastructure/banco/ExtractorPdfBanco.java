@@ -96,7 +96,8 @@ public class ExtractorPdfBanco implements ExtractorBancario {
             while (paginasIter.hasNext()) {
                 Page pagina = paginasIter.next();
                 paginas++;
-                List<MovimientoBancoCrudo> deEstaPagina = extraerDePagina(pagina, rango);
+                List<MovimientoBancoCrudo> deEstaPagina =
+                        extraerDePagina(doc, pagina, paginas - 1, rango);
                 tablasVistas += deEstaPagina.isEmpty() ? 0 : 1;
                 salida.addAll(deEstaPagina);
             }
@@ -146,7 +147,13 @@ public class ExtractorPdfBanco implements ExtractorBancario {
      * duplicado. Con el fallback, el segundo metodo corre solo cuando el primero
      * fallo, que es justo cuando no hay nada que duplicar.
      */
-    private List<MovimientoBancoCrudo> extraerDePagina(Page pagina, RangoFechas rango) {
+    private List<MovimientoBancoCrudo> extraerDePagina(PDDocument doc, Page pagina,
+                                                       int indicePagina, RangoFechas rango) {
+        List<MovimientoBancoCrudo> porPosicion = extraerDePaginaPorPosiciones(doc, indicePagina, rango);
+        if (!porPosicion.isEmpty()) {
+            return porPosicion;
+        }
+
         List<MovimientoBancoCrudo> conLineas = new ArrayList<>();
         for (Table tabla : new SpreadsheetExtractionAlgorithm().extract(pagina)) {
             conLineas.addAll(convertirTabla(tabla, rango));
@@ -164,6 +171,84 @@ public class ExtractorPdfBanco implements ExtractorBancario {
             }
         }
         return sinLineas;
+    }
+
+    /**
+     * Camino principal: armar la grilla por la posicion de los glifos.
+     *
+     * Va PRIMERO, antes que Tabula, y no por gusto. Con los cinco extractos
+     * bancarios reales que hay para probar (Santander, Galicia, ICBC, BBVA, y el
+     * consolidado), Tabula no encuentra la tabla en ninguno: con el Santander
+     * devuelve 24 fragmentos de una fila con las celdas vacias, y con el Galicia y
+     * el ICBC devuelve 0 tablas. No es que los PDF sean ilegibles: es que la
+     * pagina esta dibujada con las columnas alineadas por ESPACIO y Tabula las
+     * corta distinto. Ver TablaPorPosiciones.
+     *
+     * Tabula queda como respaldo, no se borra: hay PDFs con grilla dibujada, que es
+     * justo lo que Tabula le mejor.
+     */
+    private List<MovimientoBancoCrudo> extraerDePaginaPorPosiciones(PDDocument doc, int indicePagina,
+                                                                    RangoFechas rango) {
+        return convertirFilas(TablaPorPosiciones.filasDe(doc, indicePagina), rango);
+    }
+
+    /**
+     * Filas de celdas -&gt; movimientos.
+     *
+     * El encabezado se busca por nombre entre las primeras 10 filas y, si asi no
+     * sale, se completa por contenido. Hace falta el segundo intento porque el
+     * Santander encabezado la columna del dinero como "Caja de Ahorro en pesos", que
+     * es el nombre de la cuenta: por nombre no se reconoce, pero sus celdas si son
+     * importes, y de ahi se saca. Ver FormatoExtracto.completarPorContenido.
+     */
+    private List<MovimientoBancoCrudo> convertirFilas(List<List<String>> filas, RangoFechas rango) {
+        if (filas.isEmpty()) {
+            return List.of();
+        }
+        Encabezado encabezado = buscarEncabezadoEnFilas(filas);
+        if (encabezado == null) {
+            return List.of();
+        }
+
+        List<MovimientoBancoCrudo> salida = new ArrayList<>();
+        for (int f = encabezado.desdeFila(); f < filas.size(); f++) {
+            List<String> celdas = filas.get(f);
+            if (celdas.stream().allMatch(c -> c == null || c.isBlank())) {
+                continue;
+            }
+            try {
+                MovimientoBancoCrudo crudo = FormatoExtracto.convertir(celdas, encabezado.columnas());
+                if (crudo != null && enRango(crudo, rango)) {
+                    salida.add(crudo);
+                }
+            } catch (RuntimeException ignorada) {
+                // Igual que en convertirTabla: una fila rota no tira el archivo.
+            }
+        }
+        return salida;
+    }
+
+    /**
+     * Busca la fila que hace de encabezado entre las primeras 10, probando primero
+     * por nombre y despues completando por contenido.
+     *
+     * El limite de 10 filas sale de medirlo: en los cuatro bancos el encabezado esta
+     * en la fila 0, 2 o 3, contando desde el primer renglon con texto de la pagina.
+     */
+    private Encabezado buscarEncabezadoEnFilas(List<List<String>> filas) {
+        int limite = Math.min(filas.size(), 10);
+        for (int f = 0; f < limite; f++) {
+            Map<String, Integer> porNombre = FormatoExtracto.mapearPorNombre(filas.get(f));
+            if (porNombre.isEmpty()) {
+                continue;
+            }
+            // Con nombre alcanza: se respeta el mapa tal cual, sin tocar nada.
+            Map<String, Integer> completo = FormatoExtracto.completarPorContenido(porNombre, filas);
+            if (!completo.isEmpty()) {
+                return new Encabezado(completo, f + 1);
+            }
+        }
+        return null;
     }
 
     private List<MovimientoBancoCrudo> convertirTabla(Table tabla, RangoFechas rango) {
