@@ -51,15 +51,22 @@ describe('Workspace: menus de Importar y Exportar', () => {
   ];
 
   /**
-   * Contesta los tres pedidos que hace la pantalla al entrar y deja el fixture
+   * Contesta los CUATRO pedidos que hace la pantalla al entrar y deja el fixture
    * listo. Los overrides existen para probar el caso de un formato que el backend
    * todavia no tiene: la peticion se contesta una sola vez, al entrar.
+   *
+   * El cuarto es `/empresas`, el de la barra de empresa. Se contesta con lista
+   * vacia, que es el estado de verdad con Xubio apagado. No es solo para que el
+   * `verify()` del `afterEach` pase: si esa peticion queda colgada, el fallo dice
+   * "Expected no open requests" y el sintoma parece un problema de los menus,
+   * cuando lo unico que cambio es que la pantalla consulta que empresas hay.
    */
   async function armar(over: { formatos?: unknown[]; extractores?: unknown[] } = {}): Promise<void> {
     fixture = TestBed.createComponent(Workspace);
     fixture.detectChanges();
     http = TestBed.inject(HttpTestingController);
 
+    http.expectOne((r) => r.url.endsWith('/empresas')).flush([]);
     http.expectOne((r) => r.url.endsWith('/filtros/opciones')).flush({
       cuentasBancarias: [],
       cuentasContables: [],
@@ -167,6 +174,7 @@ describe('Workspace: menus de Importar y Exportar', () => {
     fixture.detectChanges();
     http = TestBed.inject(HttpTestingController);
 
+    http.expectOne((r) => r.url.endsWith('/empresas')).flush([]);
     http.expectOne((r) => r.url.endsWith('/filtros/opciones')).flush({
       cuentasBancarias: [],
       cuentasContables: [],
@@ -286,6 +294,7 @@ describe('Workspace: fallo al leer los catalogos', () => {
     fixture.detectChanges();
     http = TestBed.inject(HttpTestingController);
 
+    http.expectOne((r) => r.url.endsWith('/empresas')).flush([]);
     http
       .expectOne((r) => r.url.endsWith('/filtros/opciones'))
       .flush(ERROR_XUBIO, { status: 503, statusText: 'Service Unavailable' });
@@ -310,6 +319,7 @@ describe('Workspace: fallo al leer los catalogos', () => {
     fixture.detectChanges();
     http = TestBed.inject(HttpTestingController);
 
+    http.expectOne((r) => r.url.endsWith('/empresas')).flush([]);
     http
       .expectOne((r) => r.url.endsWith('/filtros/opciones'))
       .flush(ERROR_XUBIO, { status: 503, statusText: 'Service Unavailable' });

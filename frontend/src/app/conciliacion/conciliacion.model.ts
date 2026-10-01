@@ -64,6 +64,28 @@ export interface OpcionesFiltro {
   circuitos: CircuitoContable[];
 }
 
+/**
+ * Una empresa que la app puede operar.
+ *
+ * `clave` NO es un id de Xubio: es el nombre con el que la empresa esta declarada
+ * en la configuracion, y es el valor con el que se la selecciona. Va aparte de
+ * `nombre` a proposito, y no se derivan uno del otro, porque son dos cosas
+ * distintas: la `clave` la escribo nosotros y no puede cambiar sin romper la
+ * seleccion guardada en el navegador; el `nombre` lo devuelve `GET /miempresa` y
+ * puede cambiar en Xubio sin que nos enteremos.
+ *
+ * `estado` distingue "esta configurada y Xubio le responds" de "esta configurada
+ * pero sus credenciales no sirvieron". La segunda se muestra igual en la lista: si
+ * se la sacara, uno creeria que la empresa fue borrada.
+ */
+export interface Empresa {
+  clave: string;
+  nombre: string;
+  estado: 'OK' | 'SIN_ACCESO';
+  /** El motivo que devolvio Xubio, o por que no se pudo consultar. */
+  detalle?: string | null;
+}
+
 export interface MovimientoBancario {
   id: number;
   /** Derivado: viene de la cuenta, no es una columna propia. */

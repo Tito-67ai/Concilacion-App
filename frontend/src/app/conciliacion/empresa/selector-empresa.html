@@ -1,0 +1,60 @@
+<!--
+  Barra de empresa activa. Va en la fila del titulo de la pantalla, no en una barra
+  nueva: la pantalla de conciliacion ya tiene su encabezado y dos encabezados
+  pegados dicen "hay dos pantallas".
+
+  Tres estados y un cuarto, porque con un desplegable vacio no se distingue
+  "cargando" de "no hay" de "fallo":
+
+    cargando   el spinner
+    error      el motivo del 503, con Reintentar
+    vacio      "Ninguna empresa configurada": se llega aca con Xubio apagado
+    lista      el desplegable
+
+  El `title` del select lleva el motivo de Xubio de las entradas sin acceso, que si
+  no seria invisible: el dato esta en el JSON, la interfaz no lo muestra.
+-->
+
+<div class="empresa d-flex align-items-center gap-2">
+  <label for="sel-empresa" class="empresa-label mb-0">Empresa</label>
+
+  @if (cargando()) {
+    <span
+      class="spinner-border spinner-border-sm text-secondary"
+      role="status"
+      aria-label="Consultando empresas"
+    ></span>
+  } @else if (error(); as motivo) {
+    <span class="empresa-error" [title]="motivo">{{ motivo }}</span>
+    <button type="button" class="btn btn-link btn-sm p-0 empresa-reintentar" (click)="reintentar()">
+      Reintentar
+    </button>
+  } @else if (empresas().length === 0) {
+    <span class="empresa-vacia">Ninguna empresa configurada</span>
+  } @else {
+    <select
+      id="sel-empresa"
+      name="empresa"
+      class="form-select form-select-sm rounded-0 border-secondary-subtle shadow-none"
+      [ngModel]="clave()"
+      (ngModelChange)="alElegir($event)"
+      [title]="activa()?.detalle ?? null"
+    >
+      @for (e of empresas(); track e.clave) {
+        <option [ngValue]="e.clave" [disabled]="e.estado !== 'OK'">
+          {{ e.nombre }}{{ e.estado === 'OK' ? '' : ' — sin acceso' }}
+        </option>
+      }
+    </select>
+
+    @if (sinAcceso().length > 0) {
+      <span
+        class="empresa-aviso"
+        [title]="sinAcceso()[0].detalle"
+        [attr.aria-label]="sinAcceso().length + ' empresas sin acceso'"
+      >
+        {{ sinAcceso().length }} sin acceso
+      </span>
+    }
+  }
+</div>

@@ -3,10 +3,12 @@ import { HttpErrorResponse, HttpResponse } from '@angular/common/http';
 import { Component, OnInit, computed, inject, signal } from '@angular/core';
 import { finalize, forkJoin } from 'rxjs';
 import { ConciliacionService } from '../conciliacion.service';
+import { SelectorEmpresa } from '../empresa/selector-empresa';
 import { FechaDmPipe } from '../fecha-dm.pipe';
 import { FiltroConciliacionUi } from '../filtro/filtro-conciliacion';
 import {
   Conciliacion,
+  Empresa,
   FiltroConciliacion,
   ImportacionBancaria,
   InfoExtractor,
@@ -49,7 +51,7 @@ interface Mensaje {
  */
 @Component({
   selector: 'app-workspace',
-  imports: [DecimalPipe, FechaDmPipe, FiltroConciliacionUi, PanelBanco, PanelXubio],
+  imports: [DecimalPipe, FechaDmPipe, FiltroConciliacionUi, PanelBanco, PanelXubio, SelectorEmpresa],
   templateUrl: './workspace.html',
   styleUrl: './workspace.css',
 })
@@ -64,6 +66,9 @@ export class Workspace implements OnInit {
 
   protected readonly tab = signal<Tab>('a-conciliar');
   protected readonly ayuda = signal(false);
+
+  /** null hasta que se elige una empresa en la barra de arriba. */
+  protected readonly empresaActiva = signal<Empresa | null>(null);
 
   /** null = no se aplico ningun filtro todavia. Ver la nota de arriba. */
   protected readonly filtro = signal<FiltroConciliacion | null>(null);
@@ -659,6 +664,31 @@ export class Workspace implements OnInit {
 
   protected cambiarTab(t: Tab): void {
     this.tab.set(t);
+  }
+
+  /**
+   * Empresa elegida en la barra de arriba.
+   *
+   * LO QUE todavia NO HACE: cambiar los datos de la pantalla. Los endpoints de la
+   * conciliacion no reciben la empresa, asi que siguen leyendo de la cuenta por
+   * defecto. Se registra igual, y no se finge que ya surtio efecto: un selector que
+   * acepta el clic y no cambia nada es peor que uno que todavia no esta, porque
+   * uno hace creer que los datos que se ven son de la empresa elegida.
+   *
+   * Lo que si hay que resolver aca es el vaciado: al cambiar de empresa, el filtro
+   * aplicado quedaria apuntando a catalogos de otra, y "aplicar" traeria un 404
+   * imposible de explicar. Por eso el filtro se tira y se avisa.
+   */
+  protected cambioEmpresa(e: Empresa): void {
+    this.empresaActiva.set(e);
+    this.filtro.set(null);
+    this.banco.set([]);
+    this.contable.set([]);
+    this.conciliados.set([]);
+    this.mensaje.set({
+      texto: `Empresa activa: ${e.nombre}. Elegi los filtros de nuevo para ver sus datos.`,
+      tipo: 'info',
+    });
   }
 
   /**

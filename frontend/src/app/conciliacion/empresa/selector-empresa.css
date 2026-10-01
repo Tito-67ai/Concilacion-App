@@ -1,0 +1,49 @@
+/*
+ * El selector no lleva colores propios mas alla de los estados que tienen que
+ * verse: el motivo de un 503 y la cuenta de empresas sin acceso. Si el error y el
+ * listado se ven igual, el error pasa por ser "no hay empresas" y eso es peor que
+ * no mostrarlo: uno va a configurarlo de nuevo y el problema era otro.
+ */
+
+.empresa {
+  font-size: 0.85rem;
+}
+
+.empresa-label {
+  color: #6c757d;
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+.empresa select {
+  min-width: 230px;
+}
+
+/* El motivo del 503: largo, y no entra al lado del select sin romper la fila. */
+.empresa-error {
+  color: #b02a37;
+  max-width: 420px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.empresa-vacia {
+  color: #6c757d;
+}
+
+.empresa-aviso {
+  color: #b58105;
+  white-space: nowrap;
+  cursor: help;
+}
+
+.empresa-reintentar {
+  color: #005f9e;
+  text-decoration: none;
+  white-space: nowrap;
+}
+
+.empresa-reintentar:hover {
+  text-decoration: underline;
+}

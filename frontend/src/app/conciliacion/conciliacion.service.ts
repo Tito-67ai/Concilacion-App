@@ -3,6 +3,7 @@ import { Injectable, inject } from '@angular/core';
 import { Observable } from 'rxjs';
 import {
   Conciliacion,
+  Empresa,
   FiltroConciliacion,
   ImportacionBancaria,
   InfoExtractor,
@@ -30,6 +31,21 @@ export class ConciliacionService {
   /** Opciones de los desplegables, en una sola llamada. */
   getOpciones(): Observable<OpcionesFiltro> {
     return this.http.get<OpcionesFiltro>(`${BASE}/filtros/opciones`);
+  }
+
+  /**
+   * Empresas que se pueden operar: una por App Cliente de Xubio.
+   *
+   * El nombre de cada una lo trae `GET /miempresa` de Xubio, no la configuracion.
+   * Por eso el endpoint es una llamada remota por empresa y por eso devuelve 200
+   * aunque alguna falle: cada una viene con `estado = SIN_ACCESO` y el motivo.
+   *
+   * Un 503 aca seria peor: la barra quedaria en error y no se podrian elegir las
+   * empresas que si funcionan. Con la fuente apagada la lista viene vacia, que es
+   * un estado normal y no un error.
+   */
+  getEmpresas(): Observable<Empresa[]> {
+    return this.http.get<Empresa[]>(`${BASE}/empresas`);
   }
 
   /**

@@ -1,9 +1,12 @@
 <div class="container-fluid px-4 py-3 workspace">
-  <div class="d-flex justify-content-between align-items-center mb-3">
+  <div class="d-flex justify-content-between align-items-center mb-3 gap-3 flex-wrap">
     <h5 class="fw-normal text-dark m-0" style="font-size: 1.15rem">Conciliación Bancaria Automática</h5>
-    <button type="button" class="btn btn-sm p-0 border-0 text-info" style="font-size: 0.85rem" (click)="ayuda.set(!ayuda())">
-      Ver ayuda
-    </button>
+    <div class="d-flex align-items-center gap-3">
+      <app-selector-empresa (cambio)="cambioEmpresa($event)" />
+      <button type="button" class="btn btn-sm p-0 border-0 text-info" style="font-size: 0.85rem" (click)="ayuda.set(!ayuda())">
+        Ver ayuda
+      </button>
+    </div>
   </div>
 
   @if (ayuda()) {
