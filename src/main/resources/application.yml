@@ -102,6 +102,43 @@ conciliacion:
     ruta-token: /TokenEndpoint
     ruta-cuentas-contables: /cuenta
     ruta-circuitos: /circuitoContableBean
+    ruta-mi-empresa: /miempresa
+
+    # ── EMPRESAS ────────────────────────────────────────────────────────────────
+    #
+    # Una App Cliente de Xubio por empresa. La lista de arriba (client-id y
+    # client-secret sueltos) es la empresa "default", y es la que usan los catalogos.
+    # Acá abajo van las ADICIONALES.
+    #
+    # POR QUE HAY QUE DECLARARLAS Y NO SE DESCUBREN SOLAS:
+    # la API pública de Xubio no tiene el concepto de estudio ni de "empresas de un
+    # usuario". Se recorrió la spec entera (63 rutas) y la palabra "estudio" no
+    # aparece: todo es oauth2 client_credentials, y cada par client-id/secret es de
+    # UNA sola empresa. El login con usuario y password que sí lista las empresas de
+    # un estudio pertenece a la app web de Xubio, que no publica esa API.
+    #
+    # Para agregar una: en Xubio, Configuración -> Integraciones -> API de Xubio ->
+    # Nueva App Cliente. Después se declara acá:
+    #
+    #   empresas:
+    #     - clave: tito
+    #       client-id: ${XUBIO_TITO_CLIENT_ID:}
+    #       client-secret: ${XUBIO_TITO_CLIENT_SECRET:}
+    #     - clave: kiosco
+    #       client-id: ${XUBIO_KIOSCO_CLIENT_ID:}
+    #       client-secret: ${XUBIO_KIOSCO_CLIENT_SECRET:}
+    #
+    # El `nombre` NO va acá: sale de `GET /miempresa` de Xubio. Si se escribiera
+    # acá, la lista dejaría de coincidir con Xubio en silencio.
+    #
+    # La `clave` es el valor del desplegable y es lo que queda guardado en el
+    # navegador: cambiarle el nombre rompe la selección de quien ya la tenía elegida.
+    #
+    # Vacía a propósito: con Xubio apagado, o sin App Cliente, la barra muestra
+    # "Ninguna empresa configurada". Los secretos van por variable de entorno, y por
+    # la misma razón que los de arriba: el default vacío es lo que hace que el error
+    # sea "faltan credenciales" y no "el repo está filtrado".
+    empresas: []
 
     # Si Xubio no contesta en este tiempo, se corta y se avisa. Sin esto la
     # pantalla de conciliacion se queda esperando para siempre y el usuario no

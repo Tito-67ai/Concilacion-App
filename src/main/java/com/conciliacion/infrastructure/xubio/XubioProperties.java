@@ -3,6 +3,8 @@ package com.conciliacion.infrastructure.xubio;
 import org.springframework.boot.context.properties.ConfigurationProperties;
 
 import java.time.Duration;
+import java.util.ArrayList;
+import java.util.List;
 
 /**
  * Como se habla con la API de Xubio.
@@ -70,6 +72,60 @@ public class XubioProperties {
     private String rutaCircuitos = "/circuitoContableBean";
 
     /**
+     * La empresa a la que pertenece el par de credenciales.
+     *
+     * Es la unica ruta de la spec que devuelve la empresa en vez de un catalogo.
+     * La usa `XubioEmpresas` para poner el nombre real en la barra, y es la razon
+     * por la que el nombre de cada empresa no se escribe en la configuracion: si se
+     * escribiera, la lista dejaria de coincidir con Xubio en silencio.
+     */
+    private String rutaMiEmpresa = "/miempresa";
+
+    /**
+     * Empresas adicionales, una App Cliente de Xubio cada una.
+     *
+     * ── POR QUE SON VARIAS Y NO UNA SOLA ───────────────────────────────────────
+     *
+     * Porque en la API publica de Xubio no existe el concepto de estudio ni de
+     * "empresas de un usuario". Se recorrio la spec entera (63 rutas) y la palabra
+     * "estudio" no aparece: todas las rutas usan `client_credentials`, y cada par
+     * client-id / client-secret pertenece a una sola empresa. El login con usuario
+     * y password, que si lista las empresas de un estudio, es de la app web de
+     * Xubio y no esta documentado.
+     *
+     * La consecuencia practica: para operar la segunda empresa hay que crear una
+     * segunda App Cliente en Xubio (Configuracion -> Integraciones -> API de Xubio),
+     * y declararla aca. No hay forma de que la app las descubra sola.
+     *
+     * La empresa principal NO se declara aca: son las credenciales sueltas de este
+     * mismo record, que ya usaban los catalogos. Sigue siendo la "default", y asi
+     * agregar empresas no obliga a mover lo que ya andaba.
+     */
+    private List<EmpresaXubio> empresas = new ArrayList<>();
+
+    /**
+     * Una App Cliente de Xubio.
+     *
+     * `clave` es el identificador con el que la elige el usuario en la pantalla y
+     * con el que se guarda la seleccion. No puede cambiar sin romper esa seleccion.
+     * El nombre de la empresa NO va aca: lo trae `GET /miempresa`.
+     */
+    public static class EmpresaXubio {
+        private String clave;
+        private String clientId;
+        private String clientSecret;
+
+        public String getClave() { return clave; }
+        public void setClave(String clave) { this.clave = clave; }
+
+        public String getClientId() { return clientId; }
+        public void setClientId(String clientId) { this.clientId = clientId; }
+
+        public String getClientSecret() { return clientSecret; }
+        public void setClientSecret(String clientSecret) { this.clientSecret = clientSecret; }
+    }
+
+    /**
      * NO hay ruta de cuentas bancarias, y no es una omision: la API de Xubio no
      * expone las cuentas bancarias de la empresa. Se recorrio la spec entera y el
      * unico recurso con "banco" en el nombre es `GET /banco`, que devuelve el
@@ -132,6 +188,12 @@ public class XubioProperties {
 
     public String getRutaCircuitos() { return rutaCircuitos; }
     public void setRutaCircuitos(String v) { this.rutaCircuitos = v; }
+
+    public String getRutaMiEmpresa() { return rutaMiEmpresa; }
+    public void setRutaMiEmpresa(String v) { this.rutaMiEmpresa = v; }
+
+    public List<EmpresaXubio> getEmpresas() { return empresas; }
+    public void setEmpresas(List<EmpresaXubio> empresas) { this.empresas = empresas; }
 
     public Duration getTimeout() { return timeout; }
     public void setTimeout(Duration timeout) { this.timeout = timeout; }

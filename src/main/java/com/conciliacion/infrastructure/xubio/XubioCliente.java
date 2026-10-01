@@ -15,10 +15,8 @@ import org.springframework.web.client.RestClient;
 import org.springframework.web.client.RestClientException;
 import org.springframework.web.client.RestClientResponseException;
 
-import java.nio.charset.StandardCharsets;
 import java.time.Instant;
 import java.util.Arrays;
-import java.util.Base64;
 import java.util.List;
 import java.util.concurrent.atomic.AtomicReference;
 
@@ -221,20 +219,12 @@ public class XubioCliente implements CatalogoXubio {
     /**
      * HTTP Basic con client-id y client-secret.
      *
-     * Base64 de "id:secreto". Es lo que dice la documentacion de Xubio y lo que
-     * hace `--user` de curl. Un secreto con dos puntos se parte mal a mano, por eso
-     * se hace con `lastIndexOf`: el id puede tenerlos y no son separadores.
+     * La regla vive en `XubioCredenciales` porque con varias empresas hay mas de un
+     * pedido de token, y dos copias de esto divergen: un dia una se arregla y la otra
+     * no, y solo falla para la empresa nueva.
      */
     private static String basic(String id, String secreto) {
-        StringBuilder credenciales = new StringBuilder(id);
-        int ultimo = secreto.lastIndexOf(':');
-        if (ultimo >= 0) {
-            credenciales.append(secreto.substring(ultimo));
-        } else {
-            credenciales.append(':').append(secreto);
-        }
-        return "Basic " + Base64.getEncoder()
-                .encodeToString(credenciales.toString().getBytes(StandardCharsets.UTF_8));
+        return XubioCredenciales.basic(id, secreto);
     }
 
     /**
@@ -307,16 +297,11 @@ public class XubioCliente implements CatalogoXubio {
     /**
      * El cuerpo del error, que es donde la API dice que esta mal.
      *
-     * Se recorta a 300 caracteres: un error de proxy puede devolver una pagina
-     * HTML entera, y eso en un mensaje de la pantalla es ruido.
+     * Compartido con `XubioEmpresas`: el recorte a 300 caracteres evita que un error
+     * de proxy que devuelve una pagina HTML entera termine en un mensaje de pantalla.
      */
     private String cuerpoDeError(RestClientResponseException e) {
-        String cuerpo = e.getResponseBodyAsString();
-        if (cuerpo == null || cuerpo.isBlank()) {
-            return "sin detalle.";
-        }
-        String recortado = cuerpo.length() > 300 ? cuerpo.substring(0, 300) + "..." : cuerpo;
-        return recortado.replaceAll("\\s+", " ").trim();
+        return XubioCredenciales.cuerpoDeError(e);
     }
 
     private static String causa(Throwable e) {

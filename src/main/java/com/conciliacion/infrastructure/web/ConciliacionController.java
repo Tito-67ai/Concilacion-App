@@ -5,6 +5,8 @@ import com.conciliacion.application.FiltroConciliacion;
 import com.conciliacion.application.OpcionesFiltro;
 import com.conciliacion.application.ParejaConciliacion;
 import com.conciliacion.application.ResultadoConciliacion;
+import com.conciliacion.application.empresa.Empresa;
+import com.conciliacion.application.empresa.EmpresasXubio;
 import com.conciliacion.domain.model.Conciliacion;
 import com.conciliacion.domain.model.EstadoConciliacion;
 import com.conciliacion.domain.model.MovimientoBancario;
@@ -24,9 +26,31 @@ import java.util.Map;
 public class ConciliacionController {
 
     private final ConciliacionService service;
+    private final EmpresasXubio empresas;
 
-    public ConciliacionController(ConciliacionService service) {
+    public ConciliacionController(ConciliacionService service, EmpresasXubio empresas) {
         this.service = service;
+        this.empresas = empresas;
+    }
+
+    /**
+     * Empresas que se pueden operar, una por App Cliente de Xubio.
+     *
+     * El nombre de cada una lo trae `GET /miempresa`, no la configuracion, asi que
+     * la lista refleja lo que Xubio tiene de verdad y no lo que alguien escribio
+     * hace tres meses.
+     *
+     * Se devuelve 200 aunque ninguna tenga acceso: la respuesta es la lista con
+     * `estado = SIN_ACCESO` y el motivo en cada una, y la pantalla los muestra
+     * aparte. Un 503 aca seria peor: la barra quedaria en error y no se podrian
+     * elegir las empresas que si funcionan.
+     *
+     * Con la fuente apagada devuelve una lista vacia, que NO es lo mismo que un
+     * error: la pantalla la muestra como "ninguna empresa configurada".
+     */
+    @GetMapping("/empresas")
+    public List<Empresa> empresas() {
+        return empresas.consultar();
     }
 
     /** Opciones de los desplegables del filtro, en una sola llamada. */
